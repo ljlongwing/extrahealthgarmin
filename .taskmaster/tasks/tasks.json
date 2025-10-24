@@ -1,0 +1,1314 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Initialize Android Project",
+        "description": "Set up the Android project structure for the Tefal-to-Garmin Sync utility.",
+        "details": "Create a new Android project targeting API level 26+. Configure Gradle, dependencies, and basic package structure. Ensure compatibility with Android 8.0 and above.",
+        "testStrategy": "Verify project builds and runs on emulator and physical device with API 26+.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create New Android Project in Android Studio",
+            "description": "Start a new Android project using the Empty Activity template, specifying the project name, package, language, and minimum SDK (API 26+).",
+            "dependencies": [],
+            "details": "Open Android Studio, select 'New Project', choose the 'Empty Activity' template, and fill in the required fields: project name, package name, save location, language (Kotlin or Java), and set the minimum SDK to API 26 (Android 8.0). Confirm and create the project to generate the initial structure and files.",
+            "status": "pending",
+            "testStrategy": "Verify that the project is created successfully and all default files (MainActivity, layout, manifest) are present."
+          },
+          {
+            "id": 2,
+            "title": "Configure Gradle Files and Project Dependencies",
+            "description": "Set up Gradle build scripts and add required dependencies for the project, ensuring compatibility with Android 8.0 and above.",
+            "dependencies": [
+              1
+            ],
+            "details": "Open the build.gradle files (project and app module). Update compileSdkVersion and targetSdkVersion to at least 26. Add or update dependencies as needed (e.g., AndroidX libraries). Sync the project to ensure all dependencies are resolved and there are no build errors.",
+            "status": "pending",
+            "testStrategy": "Run Gradle sync and confirm there are no errors. Check that dependencies are correctly resolved in the project structure."
+          },
+          {
+            "id": 3,
+            "title": "Verify Project Build and Run on Emulator and Device",
+            "description": "Ensure the project builds and runs successfully on both an emulator and a physical device with API level 26 or higher.",
+            "dependencies": [
+              2
+            ],
+            "details": "Build the project in Android Studio. Launch the app on an Android emulator configured for API 26+ and on a physical device running Android 8.0 or higher. Confirm that the app launches without errors and displays the default screen.",
+            "status": "pending",
+            "testStrategy": "Run the app on both emulator and device, verifying successful launch and absence of runtime errors."
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Configure AndroidManifest for Share Target",
+        "description": "Register the app as a share target for CSV files via Android's intent system.",
+        "details": "Add <intent-filter> to AndroidManifest.xml for android.intent.action.SEND. Register MIME types: text/csv, text/comma-separated-values, application/csv, text/*.",
+        "testStrategy": "Share a CSV file from another app and verify the utility appears as a target.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add intent-filters for CSV MIME types in AndroidManifest.xml",
+            "description": "Update the main activity in AndroidManifest.xml to register the app as a share target for multiple CSV MIME types using intent-filters.",
+            "dependencies": [],
+            "details": "Edit the <activity> element for the main activity in AndroidManifest.xml. Add one or more <intent-filter> elements for android.intent.action.SEND, each specifying a <data> tag with a different CSV MIME type: text/csv, text/comma-separated-values, application/csv, and text/*. Ensure android:exported=\"true\" is set and include android.intent.category.DEFAULT. Example:\n\n<intent-filter>\n  <action android:name=\"android.intent.action.SEND\" />\n  <category android:name=\"android.intent.category.DEFAULT\" />\n  <data android:mimeType=\"text/csv\" />\n</intent-filter>\n\nRepeat for each MIME type as needed.",
+            "status": "pending",
+            "testStrategy": "Inspect AndroidManifest.xml for correct intent-filter configuration. Use Android Studio's manifest viewer or lint tools to verify syntax and placement."
+          },
+          {
+            "id": 2,
+            "title": "Verify share target functionality for all registered CSV MIME types",
+            "description": "Test the app's appearance as a share target and correct intent handling when sharing CSV files with different MIME types from other apps.",
+            "dependencies": [
+              1
+            ],
+            "details": "On a device or emulator, use various apps (e.g., file manager, email, or Tefal Goodvibes) to share CSV files with different MIME types (text/csv, text/comma-separated-values, application/csv, text/*). Confirm the app appears as a share target for each type. Launch the app via the share intent and check that the correct activity is invoked.",
+            "status": "pending",
+            "testStrategy": "Share CSV files from multiple apps and verify the app is listed as a share target for each MIME type. Use adb or logcat to confirm the correct intent is received and handled."
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Implement File Receiving via Intent",
+        "description": "Handle incoming intents to receive CSV files from other apps.",
+        "details": "Extract file URI from the intent, open input stream, and read CSV data. Handle permission requests if needed.",
+        "testStrategy": "Send a CSV file from Tefal Goodvibes app and verify correct file reception.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Extract File URI from Incoming Intent",
+            "description": "Handle the incoming intent and extract the URI of the CSV file provided by another app.",
+            "dependencies": [],
+            "details": "Implement logic in the Activity or BroadcastReceiver to receive the intent, check its action and type, and extract the file URI from intent extras (e.g., intent.getData()). Ensure the intent is properly filtered in the manifest to accept CSV files.",
+            "status": "pending",
+            "testStrategy": "Send a CSV file from another app and verify the correct URI is extracted from the intent."
+          },
+          {
+            "id": 2,
+            "title": "Open InputStream and Read CSV Data",
+            "description": "Use the extracted URI to open an InputStream and read the CSV file contents into memory.",
+            "dependencies": [
+              1
+            ],
+            "details": "Utilize ContentResolver to open an InputStream from the URI. Use BufferedReader to read the CSV data line by line, splitting each line into fields. Store the parsed data in a suitable structure, such as a List of String arrays or a custom model class[1].",
+            "status": "pending",
+            "testStrategy": "Provide a valid CSV URI and verify that the file is read and parsed correctly, with all rows and columns accessible."
+          },
+          {
+            "id": 3,
+            "title": "Handle Permissions and File Metadata",
+            "description": "Ensure the app has the necessary permissions to access the file and retrieve metadata such as file name and size.",
+            "dependencies": [
+              1
+            ],
+            "details": "Check and request runtime permissions if the URI requires access (e.g., READ_EXTERNAL_STORAGE). Use ContentResolver and OpenableColumns to query file metadata like display name and size[3]. Handle permission denial gracefully and inform the user.",
+            "status": "pending",
+            "testStrategy": "Test with files from different sources (internal, external, cloud) and verify permission handling and metadata retrieval."
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Validate Input File Format",
+        "description": "Check that the received file is a valid Tefal Goodvibes CSV export.",
+        "details": "Parse headers and ensure expected Russian column names are present. Validate UTF-8 encoding and comma delimiter.",
+        "testStrategy": "Test with valid and invalid CSV files; verify error handling and user messaging.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Check CSV File Encoding is UTF-8 Without BOM",
+            "description": "Verify that the uploaded CSV file uses UTF-8 encoding and does not include a Byte Order Mark (BOM).",
+            "dependencies": [],
+            "details": "Programmatically inspect the file's byte sequence to confirm UTF-8 encoding and ensure no BOM is present. Reject files with other encodings or BOM, as required for compatibility with Russian characters and downstream processing.",
+            "status": "pending",
+            "testStrategy": "Test with CSV files encoded in UTF-8 (with and without BOM), UTF-16, and other encodings. Confirm only valid UTF-8 without BOM is accepted."
+          },
+          {
+            "id": 2,
+            "title": "Validate Comma Delimiter Usage",
+            "description": "Ensure the CSV file uses commas as the field delimiter throughout the file.",
+            "dependencies": [
+              1
+            ],
+            "details": "Analyze the file to confirm that commas are consistently used to separate fields in every row. Reject files using semicolons, tabs, or mixed delimiters.",
+            "status": "pending",
+            "testStrategy": "Test with files using commas, semicolons, tabs, and mixed delimiters. Verify only comma-delimited files are accepted."
+          },
+          {
+            "id": 3,
+            "title": "Verify Presence and Correctness of Russian Column Headers",
+            "description": "Check that the CSV header row matches the expected Russian column names for a Tefal Goodvibes export.",
+            "dependencies": [
+              2
+            ],
+            "details": "Parse the first row and compare each column name against the required Russian header list. Flag missing, extra, or misspelled columns. Provide clear error messages for mismatches.",
+            "status": "pending",
+            "testStrategy": "Test with files containing correct, missing, extra, and misspelled Russian headers. Confirm only files with the exact expected headers are accepted."
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Parse CSV with Robust Multiline Support",
+        "description": "Implement a parser that correctly handles multiline records and Russian date formats.",
+        "details": "Detect and merge multiline records. Parse date column with Russian month abbreviations. Use regex and mapping for month conversion.",
+        "testStrategy": "Use sample files with multiline records and various date formats; verify correct parsing.",
+        "priority": "high",
+        "dependencies": [
+          4
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design Multiline Record Detection Logic",
+            "description": "Create logic to accurately detect and merge multiline records in CSV files.",
+            "dependencies": [],
+            "details": "Analyze CSV structure to identify fields that may contain embedded newlines. Implement state-based or regex-based detection to determine record boundaries, ensuring that multiline fields are merged correctly into single records. Consider edge cases such as quoted fields and escaped characters.",
+            "status": "pending",
+            "testStrategy": "Use sample CSV files with known multiline records. Verify that records are merged correctly and no data is lost or misaligned."
+          },
+          {
+            "id": 2,
+            "title": "Implement Robust CSV Parsing Engine",
+            "description": "Develop the core parser to process CSV files with multiline support, handling quoted fields and delimiters.",
+            "dependencies": [
+              1
+            ],
+            "details": "Utilize or extend a CSV parsing library (e.g., Apache Commons CSV) to process input streams, ensuring that multiline fields are parsed according to CSV standards. Configure the parser to recognize and correctly handle quoted fields containing newlines. Integrate the multiline detection logic from subtask 1.",
+            "status": "pending",
+            "testStrategy": "Parse various CSV samples with multiline fields and complex quoting. Compare parsed output to expected records for correctness."
+          },
+          {
+            "id": 3,
+            "title": "Validate and Normalize Parsed Records",
+            "description": "Ensure all parsed records are complete, correctly merged, and ready for downstream processing.",
+            "dependencies": [
+              2
+            ],
+            "details": "After parsing, check each record for completeness and correct field count. Normalize records by trimming whitespace, resolving any parsing ambiguities, and preparing data for further processing (e.g., date parsing). Log or report any malformed records for review.",
+            "status": "pending",
+            "testStrategy": "Run validation on parsed output from multiple test files. Confirm that all records are properly structured and any errors are flagged."
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Extract and Normalize Data Fields",
+        "description": "Extract Weight, BMI, Fat, and Date fields from parsed CSV and normalize formats.",
+        "details": "Map Tefal columns to target fields. Ensure numbers use '.' as decimal separator. Convert date to YYYY-MM-DD.",
+        "testStrategy": "Check output for correct field extraction and normalization for multiple records.",
+        "priority": "high",
+        "dependencies": [
+          5
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Map Tefal CSV Columns to Target Fields",
+            "description": "Identify and map the relevant columns from the Tefal CSV (Weight, BMI, Fat, Date) to the standardized target field names.",
+            "dependencies": [],
+            "details": "Analyze the parsed CSV structure, determine which columns correspond to Weight, BMI, Fat, and Date, and create a mapping to the target schema. Handle variations in column headers using a mapping dictionary or similar approach.",
+            "status": "pending",
+            "testStrategy": "Test with sample Tefal CSV files containing different column header variations to ensure correct mapping."
+          },
+          {
+            "id": 2,
+            "title": "Normalize Numeric Field Formats",
+            "description": "Ensure all numeric fields (Weight, BMI, Fat) use '.' as the decimal separator and are formatted consistently.",
+            "dependencies": [
+              1
+            ],
+            "details": "Convert numeric values to use a period ('.') as the decimal separator, removing any commas or locale-specific formatting. Validate that all values are numeric and handle any conversion errors.",
+            "status": "pending",
+            "testStrategy": "Check output for multiple records with varying decimal formats; verify all numbers use '.' and are valid floats."
+          },
+          {
+            "id": 3,
+            "title": "Convert Date Field to YYYY-MM-DD Format",
+            "description": "Transform the extracted Date field into the standardized YYYY-MM-DD format for consistency.",
+            "dependencies": [
+              1
+            ],
+            "details": "Parse the Date field from the mapped column, handling any locale-specific or non-standard formats, and convert it to the ISO 8601 format (YYYY-MM-DD). Use robust parsing to handle edge cases.",
+            "status": "pending",
+            "testStrategy": "Test with dates in various formats (including Russian month abbreviations) and verify all are converted to YYYY-MM-DD."
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Handle Missing or Invalid Data",
+        "description": "Ensure all required fields are present; provide default values if missing.",
+        "details": "If any of Date, Weight, BMI, Fat are missing, set to default (e.g., 0.0). Log and report skipped/modified records.",
+        "testStrategy": "Test with incomplete records; verify defaults and error reporting.",
+        "priority": "high",
+        "dependencies": [
+          6
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Field Presence and Format Validation",
+            "description": "Check each record for presence and correct format of required fields: Date, Weight, BMI, and Fat.",
+            "dependencies": [],
+            "details": "For every incoming record, verify that Date, Weight, BMI, and Fat fields are present and conform to expected formats (e.g., Date as YYYY-MM-DD, numeric values for others). Use automated validation rules to flag missing or malformed fields before further processing[1][2][6].",
+            "status": "pending",
+            "testStrategy": "Feed records with missing and incorrectly formatted fields; confirm that validation flags all issues."
+          },
+          {
+            "id": 2,
+            "title": "Apply Default Values to Missing or Invalid Fields",
+            "description": "Substitute missing or invalid Date, Weight, BMI, or Fat values with predefined defaults (e.g., 0.0).",
+            "dependencies": [
+              1
+            ],
+            "details": "When a required field is missing or fails validation, assign a default value (such as 0.0 for numeric fields). Ensure that the substitution is consistent and does not introduce ambiguity. Document the logic for default assignment and ensure it aligns with downstream requirements[3].",
+            "status": "pending",
+            "testStrategy": "Process records with missing/invalid fields and verify that defaults are correctly applied."
+          },
+          {
+            "id": 3,
+            "title": "Log and Report Skipped or Modified Records",
+            "description": "Maintain a log of all records where fields were missing, invalid, or replaced with defaults, and generate a summary report.",
+            "dependencies": [
+              2
+            ],
+            "details": "For each record with missing or invalid data, log the issue (including the original and modified values) and flag whether the record was skipped or modified. At the end of processing, produce a report summarizing all such cases for audit and debugging purposes[2][3].",
+            "status": "pending",
+            "testStrategy": "Review logs and summary reports after processing test data with known issues; confirm all modifications and skips are recorded."
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Generate Garmin-Compatible CSV Output",
+        "description": "Produce a CSV file strictly adhering to Garmin's 'Fitbit CSV' import format.",
+        "details": "Write UTF-8 encoded file. First line: 'Body'. Second line: 'Date,Weight,BMI,Fat'. Each data line: YYYY-MM-DD,weight,bmi,fat. No quotes, all fields present.",
+        "testStrategy": "Validate output against Garmin Connect import requirements. Attempt manual import.",
+        "priority": "high",
+        "dependencies": [
+          7
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define Garmin-Compatible CSV Schema and Validation Rules",
+            "description": "Specify the exact CSV structure, headers, and field requirements for Garmin's Fitbit import format.",
+            "dependencies": [],
+            "details": "Research Garmin's Fitbit CSV import requirements, confirming the file must be UTF-8 encoded, first line 'Body', second line 'Date,Weight,BMI,Fat', and each subsequent line formatted as YYYY-MM-DD,weight,bmi,fat with no quotes and all fields present. Document these rules for implementation and validation.",
+            "status": "pending",
+            "testStrategy": "Cross-reference schema with Garmin documentation and sample files. Attempt import of a manually created sample file to verify acceptance."
+          },
+          {
+            "id": 2,
+            "title": "Implement CSV Generation Logic",
+            "description": "Develop code to generate the CSV file according to the defined Garmin-compatible schema.",
+            "dependencies": [
+              1
+            ],
+            "details": "Write logic to output a UTF-8 encoded CSV file with the required header lines and data formatting. Ensure no quotes are used, all fields are present, and the date is formatted as YYYY-MM-DD. Handle edge cases such as missing or malformed data by enforcing schema compliance.",
+            "status": "pending",
+            "testStrategy": "Generate CSV files from sample input data and inspect output for correct structure, encoding, and field presence. Validate with automated checks for header and data line conformity."
+          },
+          {
+            "id": 3,
+            "title": "Automated and Manual Import Testing with Garmin Connect",
+            "description": "Test the generated CSV files by importing them into Garmin Connect to ensure compatibility and data integrity.",
+            "dependencies": [
+              2
+            ],
+            "details": "Attempt to import the generated CSV files into Garmin Connect. Observe for errors or data mismatches. Adjust generation logic if Garmin rejects the file or data is not displayed as expected. Document any Garmin-specific quirks or undocumented requirements encountered during testing.",
+            "status": "pending",
+            "testStrategy": "Perform both automated validation (schema checks) and manual import tests. Confirm successful import and correct data display in Garmin Connect. Record and address any issues found."
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Implement Main UI Screen",
+        "description": "Design and implement a single-screen UI with clear state management.",
+        "details": "Show welcome message, instructions, progress indicator, success summary, error messages, and action buttons.",
+        "testStrategy": "Verify UI transitions through all states (initial, processing, success, error) with mock data.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Display Processing Progress",
+        "description": "Show progress indicator while file is being processed.",
+        "details": "Implement progress bar or spinner. Update UI with filename and status.",
+        "testStrategy": "Process large files and verify progress feedback is accurate.",
+        "priority": "medium",
+        "dependencies": [
+          9,
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Progress Indicator in UI",
+            "description": "Add a progress bar or spinner to the UI to visually indicate file processing activity.",
+            "dependencies": [],
+            "details": "Modify the layout XML to include a ProgressBar (determinate or indeterminate as appropriate). Ensure the progress indicator is visible when processing starts and hidden when processing completes. Use styles and attributes such as android:indeterminate, android:max, and android:progress as needed. Connect the progress indicator to the processing logic so it updates in real time or displays an indeterminate state during processing.",
+            "status": "pending",
+            "testStrategy": "Start file processing and verify that the progress indicator appears and disappears at the correct times. For determinate progress, ensure the bar updates as progress changes."
+          },
+          {
+            "id": 2,
+            "title": "Update UI with Filename and Processing Status",
+            "description": "Display the current filename and a status message (e.g., 'Processing...', 'Completed') in the UI during file processing.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add TextView elements to the layout for showing the filename and status. Update these views from the processing logic: set the filename when processing starts, and update the status message as processing progresses or completes. Ensure updates are performed on the UI thread to avoid concurrency issues.",
+            "status": "pending",
+            "testStrategy": "Begin processing a file and verify that the filename and status message update correctly throughout the process, including after completion."
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Show Success Summary",
+        "description": "Display summary of processed records and provide post-processing actions.",
+        "details": "Show message: 'Conversion complete! Successfully processed X records.' Display buttons for 'Save to device' and 'Open Garmin Import Page'.",
+        "testStrategy": "Verify summary and actions appear after successful conversion.",
+        "priority": "high",
+        "dependencies": [
+          8,
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Display Success Message with Record Count",
+            "description": "Show a clear success message indicating the number of records processed.",
+            "dependencies": [],
+            "details": "Implement UI logic to display: 'Conversion complete! Successfully processed X records.' Ensure the record count is dynamically inserted based on processing results.",
+            "status": "pending",
+            "testStrategy": "Process files with varying record counts and verify the message displays the correct number each time."
+          },
+          {
+            "id": 2,
+            "title": "Present Post-Processing Action Buttons",
+            "description": "Provide actionable buttons for users after successful processing.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add 'Save to device' and 'Open Garmin Import Page' buttons below the success message. Ensure buttons are visually distinct and accessible.",
+            "status": "pending",
+            "testStrategy": "Verify both buttons appear after processing and trigger the correct actions when clicked."
+          },
+          {
+            "id": 3,
+            "title": "Summarize and Log Processed Records for User Reference",
+            "description": "Offer a summary view or log of processed records for user review or troubleshooting.",
+            "dependencies": [
+              1
+            ],
+            "details": "Display a concise summary (e.g., number of records, any skipped/failed records) and optionally provide a way to view or export this log for transparency.",
+            "status": "pending",
+            "testStrategy": "Check that the summary/log is accurate and accessible after processing, and that it reflects actual processing outcomes."
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Implement Error State and Retry",
+        "description": "Show user-friendly error messages and allow retry on failure.",
+        "details": "Display error details. Provide 'Try Again' button to reset to initial state.",
+        "testStrategy": "Simulate errors (invalid file, read failure) and verify UI and retry logic.",
+        "priority": "high",
+        "dependencies": [
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Display User-Friendly Error Messages with Contextual Details",
+            "description": "Implement UI logic to show clear, actionable error messages when failures occur, ensuring messages are understandable and help users resolve issues.",
+            "dependencies": [],
+            "details": "Design error messages to appear near the source of the error, using both text and visual indicators (such as icons or highlights). Messages should explain what went wrong, why, and suggest next steps. Avoid generic messages; provide specific details and, where possible, links to help or documentation. Ensure error messages do not obscure user input and are accessible to all users.",
+            "status": "pending",
+            "testStrategy": "Simulate various error scenarios (e.g., invalid file, network failure) and verify that the correct, user-friendly error message is displayed with actionable guidance."
+          },
+          {
+            "id": 2,
+            "title": "Implement Retry Logic and Reset UI to Initial State",
+            "description": "Add a 'Try Again' button that resets the UI and underlying state, allowing users to retry the failed operation without manual refresh.",
+            "dependencies": [
+              1
+            ],
+            "details": "When an error is displayed, provide a prominent 'Try Again' button. On click, reset all relevant UI components and internal state to their initial values, clearing error messages and restoring the UI to its pre-error state. Ensure the retry action re-triggers the original operation and handles repeated failures gracefully.",
+            "status": "pending",
+            "testStrategy": "Trigger errors, use the retry button, and verify that the UI resets correctly and the operation can be attempted again. Confirm that repeated retries do not cause inconsistent states."
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Save Output File to Downloads Folder",
+        "description": "Write the converted CSV file to the device's Downloads directory using Storage Access Framework.",
+        "details": "Generate filename as garmin-import-YYYY-MM-DD-HHMMSS.csv. Request permissions if needed. Ensure file is accessible to user.",
+        "testStrategy": "Save file and verify presence and accessibility in Downloads folder.",
+        "priority": "high",
+        "dependencies": [
+          8,
+          11
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Request User to Select Downloads Folder via Storage Access Framework",
+            "description": "Prompt the user to select the Downloads directory using the system picker provided by the Storage Access Framework.",
+            "dependencies": [],
+            "details": "Invoke the ACTION_OPEN_DOCUMENT_TREE intent to launch the system picker, allowing the user to grant access to the Downloads folder. Store the returned URI for subsequent file operations. Ensure the picker UI is user-friendly and guides the user to select the correct directory.",
+            "status": "pending",
+            "testStrategy": "Verify that the picker launches and the user can select the Downloads folder. Confirm that the returned URI corresponds to the Downloads directory."
+          },
+          {
+            "id": 2,
+            "title": "Generate Output Filename and Prepare CSV Data for Saving",
+            "description": "Create a filename in the format garmin-import-YYYY-MM-DD-HHMMSS.csv and prepare the CSV data for writing.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use the current date and time to generate the filename. Format the CSV data according to Garmin requirements. Ensure the data is ready for writing before proceeding to file creation.",
+            "status": "pending",
+            "testStrategy": "Check that the filename matches the required pattern and the CSV data is correctly formatted and ready for output."
+          },
+          {
+            "id": 3,
+            "title": "Write CSV File to Downloads Folder Using SAF URI",
+            "description": "Save the prepared CSV file to the Downloads folder using the URI obtained from the Storage Access Framework.",
+            "dependencies": [
+              2
+            ],
+            "details": "Use the SAF URI to create and write the CSV file in the Downloads directory. Handle any necessary permissions and ensure the file is accessible to the user after saving. Confirm that the file appears in the Downloads folder and is readable.",
+            "status": "pending",
+            "testStrategy": "Save a test file and verify its presence and accessibility in the Downloads folder. Attempt to open the file from a file manager to confirm correct saving."
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "Open Garmin Connect Import Page",
+        "description": "Launch default browser to Garmin Connect import URL via ACTION_VIEW intent.",
+        "details": "Open https://connect.garmin.com/modern/import-data when user clicks button.",
+        "testStrategy": "Click button and verify browser opens correct page.",
+        "priority": "high",
+        "dependencies": [
+          11
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Button to Trigger Garmin Connect Import Page",
+            "description": "Create a UI button that users can click to initiate opening the Garmin Connect import page.",
+            "dependencies": [],
+            "details": "Add a button to the relevant activity or fragment. Assign an onClick listener that will handle the action to open the browser.",
+            "status": "pending",
+            "testStrategy": "Verify button appears in UI and responds to user interaction."
+          },
+          {
+            "id": 2,
+            "title": "Launch Default Browser with Garmin Connect Import URL via ACTION_VIEW Intent",
+            "description": "Configure the button's click event to launch the default browser and navigate to https://connect.garmin.com/modern/import-data using an ACTION_VIEW intent.",
+            "dependencies": [
+              1
+            ],
+            "details": "In the button's onClick handler, construct an ACTION_VIEW intent with the Garmin Connect import URL. Ensure the intent is properly formed and triggers the browser.",
+            "status": "pending",
+            "testStrategy": "Click the button and confirm that the browser opens to the correct Garmin Connect import page."
+          },
+          {
+            "id": 3,
+            "title": "Handle Errors and Edge Cases When Opening Import Page",
+            "description": "Implement error handling for cases where the browser cannot be launched or the URL fails to open.",
+            "dependencies": [
+              2
+            ],
+            "details": "Check for exceptions when starting the intent. Display a user-friendly error message if the browser cannot be opened or if the URL is invalid.",
+            "status": "pending",
+            "testStrategy": "Simulate failure scenarios (e.g., no browser installed, malformed URL) and verify appropriate error messages are shown."
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "title": "Provide Help/FAQ for Import Errors",
+        "description": "Include help section explaining common Garmin import errors and best practices.",
+        "details": "Explain issues like 'upload error', warn against opening CSV in Excel. Provide troubleshooting tips.",
+        "testStrategy": "Verify help section is accessible and covers all listed scenarios.",
+        "priority": "medium",
+        "dependencies": [
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Research and Document Common Garmin Import Errors",
+            "description": "Compile a comprehensive list of common import errors users encounter with Garmin Connect, such as 'An error occurred with your upload. Please try again.', unsupported file formats, and data formatting issues.",
+            "dependencies": [],
+            "details": "Review Garmin forums, support pages, and user reports to identify recurring import issues. Document each error message, its likely causes, and whether it affects CSV, TCX, GPX, or other file types. Include examples and user scenarios for clarity.",
+            "status": "pending",
+            "testStrategy": "Verify the documented errors match real user reports and cover all major scenarios mentioned in the parent task."
+          },
+          {
+            "id": 2,
+            "title": "Create Best Practices and Troubleshooting Guide",
+            "description": "Develop a step-by-step troubleshooting guide and best practices for avoiding and resolving import errors, including warnings about opening CSV files in Excel and tips for file preparation.",
+            "dependencies": [
+              1
+            ],
+            "details": "Write clear instructions on how to prepare CSV files (e.g., use text editors, avoid Excel to prevent formatting changes), check for required columns, and handle date/time formats. Provide troubleshooting steps such as retrying uploads, checking file integrity, and reducing batch sizes. Highlight known bugs (e.g., TCX upload errors that may still succeed) and workarounds.",
+            "status": "pending",
+            "testStrategy": "Test the guide with sample error scenarios to ensure instructions are actionable and effective. Validate that warnings about Excel and batch sizes are prominent."
+          },
+          {
+            "id": 3,
+            "title": "Integrate Help/FAQ Section into User Interface",
+            "description": "Design and implement an accessible help or FAQ section within the app that presents the documented errors and troubleshooting guide to end users.",
+            "dependencies": [
+              1,
+              2,
+              21
+            ],
+            "details": "Collaborate with UI/UX to ensure the help section is easy to find and navigate. Structure content for quick reference, with expandable FAQs, search functionality, and links to further support. Ensure localization readiness for both English and Russian as per Task 21.",
+            "status": "pending",
+            "testStrategy": "Verify the help section is accessible from relevant screens, displays correctly in both languages, and that all documented errors and solutions are included and easy to understand."
+          }
+        ]
+      },
+      {
+        "id": 16,
+        "title": "Optimize CSV Processing Performance",
+        "description": "Ensure file conversion is fast for files up to 5MB.",
+        "details": "Profile and optimize parsing and writing logic. Use efficient I/O and memory management.",
+        "testStrategy": "Test with large files; verify conversion completes in <2 seconds on mid-range device.",
+        "priority": "medium",
+        "dependencies": [
+          8
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Profile Current CSV Parsing and Writing Performance",
+            "description": "Measure and analyze the current performance of CSV parsing and writing logic to identify bottlenecks.",
+            "dependencies": [],
+            "details": "Use profiling tools to benchmark the time and memory usage for parsing and writing CSV files up to 5MB. Identify which parts of the code are slowest or consume the most resources. Document findings for targeted optimization.",
+            "status": "pending",
+            "testStrategy": "Run profiling on representative 5MB CSV files; record parsing and writing times, and memory usage."
+          },
+          {
+            "id": 2,
+            "title": "Implement Efficient I/O and Memory Management Techniques",
+            "description": "Optimize file reading and writing by using buffered I/O, chunked processing, and memory-efficient data structures.",
+            "dependencies": [
+              1
+            ],
+            "details": "Replace standard file streams with large buffered reads (e.g., 32MB buffers) and process data in chunks to minimize memory footprint. Use appropriate data types and avoid unnecessary data copies. Consider parallel or pipelined processing if supported by the environment.",
+            "status": "pending",
+            "testStrategy": "Test with large files; verify that memory usage remains stable and processing time improves compared to baseline."
+          },
+          {
+            "id": 3,
+            "title": "Optimize CSV Parsing Logic and Data Transformation",
+            "description": "Refactor parsing logic to minimize overhead and accelerate data transformation, including type casting and value extraction.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement a state-machine-based parser or similar efficient algorithm to handle CSV structure, including quoted fields and delimiters. Perform type casting during parsing to avoid post-processing overhead. Profile improvements and ensure correctness.",
+            "status": "pending",
+            "testStrategy": "Process varied CSV files (including edge cases) and verify correctness and speed; compare against previous implementation."
+          }
+        ]
+      },
+      {
+        "id": 17,
+        "title": "Implement Unit Tests for Parsing Logic",
+        "description": "Write unit tests for CSV parsing, multiline handling, and date conversion.",
+        "details": "Test edge cases: multiline records, invalid dates, missing fields, Russian month abbreviations.",
+        "testStrategy": "Run automated tests and verify coverage for all parsing scenarios.",
+        "priority": "medium",
+        "dependencies": [
+          5,
+          6
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Write Unit Tests for Multiline CSV Record Parsing",
+            "description": "Develop unit tests to verify correct parsing of CSV records that span multiple lines, ensuring edge cases are handled.",
+            "dependencies": [],
+            "details": "Create test cases with multiline CSV records, including scenarios with embedded newlines in quoted fields. Validate that the parser reconstructs records accurately and does not split lines incorrectly.",
+            "status": "pending",
+            "testStrategy": "Use mock CSV data with multiline records. Assert that the parsed output matches expected structured records and that no data is lost or misinterpreted."
+          },
+          {
+            "id": 2,
+            "title": "Write Unit Tests for Date Conversion and Russian Month Abbreviations",
+            "description": "Implement tests to verify date parsing, including handling of invalid dates and Russian month abbreviations.",
+            "dependencies": [],
+            "details": "Design test cases covering valid and invalid date formats, missing date fields, and Russian month abbreviations (e.g., 'янв', 'фев'). Ensure the parser converts dates correctly and raises errors or returns null for invalid inputs.",
+            "status": "pending",
+            "testStrategy": "Provide sample CSV rows with various date formats and Russian abbreviations. Assert correct date conversion and error handling for invalid or missing dates."
+          },
+          {
+            "id": 3,
+            "title": "Write Unit Tests for Handling Missing and Invalid Fields",
+            "description": "Create tests to ensure the parser correctly handles missing fields and invalid field values in CSV records.",
+            "dependencies": [],
+            "details": "Generate test cases with missing required fields, extra fields, and fields containing invalid data types. Validate that the parser identifies missing or malformed fields and responds appropriately (e.g., error, default value, skip record).",
+            "status": "pending",
+            "testStrategy": "Use mock CSV data with various missing and invalid fields. Assert that the parser flags errors, applies defaults, or skips records as specified by requirements."
+          }
+        ]
+      },
+      {
+        "id": 18,
+        "title": "Implement Unit Tests for Output Generation",
+        "description": "Write unit tests to validate output CSV format and field mapping.",
+        "details": "Check for correct headers, field order, no quotes, all fields present.",
+        "testStrategy": "Run tests with sample input and verify output matches Garmin requirements.",
+        "priority": "medium",
+        "dependencies": [
+          8
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Write Unit Tests for CSV Header and Field Order Validation",
+            "description": "Create unit tests to verify that the generated CSV output contains the correct headers in the required order, with no missing or extra fields.",
+            "dependencies": [],
+            "details": "Implement tests that generate CSV output from sample data and assert that the first row matches the expected header names and order. Ensure all required fields are present and in the correct sequence. Use the Arrange, Act, Assert pattern for clarity and maintainability.",
+            "status": "pending",
+            "testStrategy": "Compare the output CSV header row to a predefined list of expected headers and order. Fail the test if any header is missing, out of order, or extra."
+          },
+          {
+            "id": 2,
+            "title": "Write Unit Tests for Field Presence and Quotation Handling",
+            "description": "Develop unit tests to ensure that every data row in the CSV output includes all required fields, with no missing values, and that fields are not unnecessarily quoted.",
+            "dependencies": [
+              1
+            ],
+            "details": "For various sample inputs, generate CSV output and check that each row contains the correct number of fields, all fields are present, and no fields are wrapped in quotes unless required by CSV rules. Test edge cases such as empty fields and special characters.",
+            "status": "pending",
+            "testStrategy": "Parse each data row and verify the field count matches the header. Check that fields are not quoted unless necessary (e.g., if containing commas or newlines). Fail the test if any field is missing or incorrectly quoted."
+          }
+        ]
+      },
+      {
+        "id": 19,
+        "title": "Implement Integration Test for End-to-End Flow",
+        "description": "Test the complete flow from file reception to output file generation.",
+        "details": "Simulate sharing a CSV file, process it, and verify output file and UI states.",
+        "testStrategy": "Automate flow and verify correct behavior for valid and invalid files.",
+        "priority": "medium",
+        "dependencies": [
+          3,
+          8,
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design End-to-End Integration Test Scenarios",
+            "description": "Identify and document all key user flows and system interactions from file reception to output generation.",
+            "dependencies": [],
+            "details": "Analyze business and functional requirements to define realistic test cases covering valid and invalid CSV file processing, UI state transitions, and output file verification. Collaborate with stakeholders to ensure coverage of critical paths.",
+            "status": "pending",
+            "testStrategy": "Review test scenarios with QA and stakeholders to confirm completeness and relevance."
+          },
+          {
+            "id": 2,
+            "title": "Set Up Automated Test Environment and Data",
+            "description": "Prepare a production-like test environment and generate realistic test data for integration testing.",
+            "dependencies": [
+              1
+            ],
+            "details": "Configure the test environment to mirror production settings, including file sharing mechanisms, UI components, and output directories. Create synthetic and real-world CSV files to simulate user actions and edge cases.",
+            "status": "pending",
+            "testStrategy": "Validate environment setup by running smoke tests and verifying data integrity before executing full integration tests."
+          },
+          {
+            "id": 3,
+            "title": "Implement and Execute Automated Integration Tests",
+            "description": "Develop and run automated tests that simulate the complete flow, verify output files, and check UI states.",
+            "dependencies": [
+              2
+            ],
+            "details": "Use a test automation framework to script the end-to-end flow: share a CSV file, trigger processing, monitor UI transitions, and validate output file correctness. Log results and report defects for failed scenarios.",
+            "status": "pending",
+            "testStrategy": "Automate test execution, monitor results, and verify that both valid and invalid files produce expected outcomes. Re-run tests after bug fixes to ensure reliability."
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "title": "Support Multiple MIME Types for File Reception",
+        "description": "Ensure compatibility with various CSV MIME types from Tefal Goodvibes app.",
+        "details": "Test and handle text/csv, text/comma-separated-values, application/csv, text/*.",
+        "testStrategy": "Share files with different MIME types and verify correct handling.",
+        "priority": "medium",
+        "dependencies": [
+          2,
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Identify and Document Supported CSV MIME Types",
+            "description": "Research and list all CSV-related MIME types that should be supported for file reception, including deprecated and non-standard variants.",
+            "dependencies": [],
+            "details": "Review official standards (RFC 4180) and common usage to compile a list of MIME types such as text/csv, text/comma-separated-values, application/csv, application/x-csv, and text/*. Document which are preferred and which are deprecated, ensuring coverage for files from the Tefal Goodvibes app and similar sources.",
+            "status": "pending",
+            "testStrategy": "Verify the list against real-world CSV files and MIME type documentation; confirm completeness with sample files from target apps."
+          },
+          {
+            "id": 2,
+            "title": "Implement MIME Type Detection and Handling Logic",
+            "description": "Develop logic to detect and correctly process incoming files with any of the identified CSV MIME types.",
+            "dependencies": [
+              1
+            ],
+            "details": "Update file reception code to recognize all documented MIME types. Ensure files with deprecated or non-standard types (e.g., application/csv) are accepted and processed as CSV. Add fallback handling for text/* where content matches CSV structure.",
+            "status": "pending",
+            "testStrategy": "Share files with each supported MIME type and verify correct detection and processing. Use automated tests to simulate file reception scenarios."
+          },
+          {
+            "id": 3,
+            "title": "Test Compatibility Across Devices and Apps",
+            "description": "Systematically test file reception using various CSV MIME types from different devices and apps, focusing on the Tefal Goodvibes app.",
+            "dependencies": [
+              2
+            ],
+            "details": "Prepare test cases with files labeled as each supported MIME type. Share files from multiple sources (e.g., Android, iOS, desktop) and confirm the app receives and processes them correctly. Document any edge cases or failures for further refinement.",
+            "status": "pending",
+            "testStrategy": "Perform manual and automated tests sharing CSV files with different MIME types; verify successful import and correct data parsing for each scenario."
+          }
+        ]
+      },
+      {
+        "id": 21,
+        "title": "Localize UI for Russian and English",
+        "description": "Provide translations for all UI strings in Russian and English.",
+        "details": "Use Android resource system for localization. Ensure correct display of Russian instructions and error messages.",
+        "testStrategy": "Switch device language and verify UI adapts accordingly.",
+        "priority": "low",
+        "dependencies": [
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Extract and Organize All UI Strings for Localization",
+            "description": "Identify all user-facing UI text in the app and ensure they are referenced via the Android strings.xml resource system.",
+            "dependencies": [],
+            "details": "Review all layouts, activities, and fragments to collect every string shown to users. Move any hardcoded text into the default res/values/strings.xml file. Ensure all UI elements reference string resources rather than inline text.",
+            "status": "pending",
+            "testStrategy": "Check that no hardcoded user-facing text remains in layouts or code; all should reference strings.xml."
+          },
+          {
+            "id": 2,
+            "title": "Create and Translate Resource Files for Russian and English",
+            "description": "Provide accurate translations for all UI strings in both Russian and English using Android's resource directory structure.",
+            "dependencies": [
+              1
+            ],
+            "details": "Duplicate the default strings.xml into res/values-ru/strings.xml for Russian and res/values/strings.xml for English. Translate all strings into Russian, ensuring correctness for instructions and error messages. Use professional translation or native speakers for accuracy.",
+            "status": "pending",
+            "testStrategy": "Review translations for completeness and correctness. Use language tools or native speakers to verify quality."
+          },
+          {
+            "id": 3,
+            "title": "Verify Localization Functionality on Device",
+            "description": "Test the app on devices/emulators with Russian and English locales to ensure all UI strings display correctly and contextually.",
+            "dependencies": [
+              2
+            ],
+            "details": "Switch device language settings between Russian and English. Navigate through all app screens, confirming that all UI elements, instructions, and error messages appear in the selected language and are formatted properly.",
+            "status": "pending",
+            "testStrategy": "Perform manual testing by switching device language. Use automated UI tests if available to check for missing or incorrect translations."
+          }
+        ]
+      },
+      {
+        "id": 22,
+        "title": "Implement Logging for Diagnostics",
+        "description": "Add logging for key events, errors, and user actions for troubleshooting.",
+        "details": "Log file reception, parsing errors, conversion results, and user actions. Use Android Logcat and optionally file-based logs.",
+        "testStrategy": "Trigger events and verify logs are generated and accessible.",
+        "priority": "low",
+        "dependencies": [
+          3,
+          4,
+          5,
+          8
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Integrate Logging for Key Events and Errors",
+            "description": "Add log statements for file reception, parsing errors, and conversion results using Android Logcat.",
+            "dependencies": [],
+            "details": "Use the android.util.Log class to emit logs at appropriate severity levels (e.g., Log.i, Log.e) for each key event: when a file is received, if a parsing error occurs, and after conversion completes. Ensure each log message includes a clear tag and relevant context for troubleshooting. Follow best practices for tagging and message formatting to facilitate filtering in Logcat.",
+            "status": "pending",
+            "testStrategy": "Trigger file reception, simulate parsing errors, and perform conversions. Verify that logs appear in Logcat with correct tags and messages."
+          },
+          {
+            "id": 2,
+            "title": "Implement Logging for User Actions",
+            "description": "Log significant user actions such as button presses, retries, and navigation events for diagnostic purposes.",
+            "dependencies": [
+              1
+            ],
+            "details": "Insert log statements in UI event handlers to record user actions (e.g., when the user initiates a file upload, retries after an error, or navigates between screens). Use consistent tagging and include relevant action details in each log message. Ensure logs are informative for tracing user behavior during troubleshooting.",
+            "status": "pending",
+            "testStrategy": "Perform user actions in the app and confirm that each action generates an appropriate log entry visible in Logcat."
+          },
+          {
+            "id": 3,
+            "title": "Enable Optional File-Based Logging",
+            "description": "Add support for writing logs to a file in addition to Logcat for persistent diagnostics.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Implement a logging mechanism that writes key log messages to a file stored in app-specific storage. Ensure file permissions are handled securely and logs are rotated or managed to avoid excessive storage use. Provide a method for accessing or exporting log files for troubleshooting.",
+            "status": "pending",
+            "testStrategy": "Trigger events that generate logs and verify that log entries are written to the file. Check file contents and accessibility, and confirm log rotation or cleanup works as intended."
+          }
+        ]
+      },
+      {
+        "id": 23,
+        "title": "Implement MVP Release Build and Distribution",
+        "description": "Prepare signed APK for distribution and testing.",
+        "details": "Configure release build, sign APK, and prepare for Play Store or direct distribution.",
+        "testStrategy": "Build release APK and verify installation and functionality.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          8,
+          9,
+          13,
+          14
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Configure Release Build Variant and Proguard Rules",
+            "description": "Set up the release build configuration in the Android project, including Proguard rules and signing configuration.",
+            "dependencies": [],
+            "details": "Update the build.gradle file to define the release build variant. Add or update Proguard rules for code obfuscation and shrinking. Configure signingConfigs with the release keystore, key alias, and passwords. Ensure all build settings are optimized for release (e.g., minifyEnabled, shrinkResources).",
+            "status": "pending",
+            "testStrategy": "Build the release APK and verify that it is signed, obfuscated, and optimized. Check that the APK installs and runs on a device."
+          },
+          {
+            "id": 2,
+            "title": "Generate and Sign the Release APK",
+            "description": "Build the signed APK using the configured release settings and keystore.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use Android Studio or Gradle CLI to assemble the release APK. Ensure the APK is signed with the release keystore. Validate that the APK is generated in the appropriate output directory and is ready for distribution.",
+            "status": "pending",
+            "testStrategy": "Verify the APK signature using apksigner or jarsigner. Install the APK on a test device and confirm it launches and functions as expected."
+          },
+          {
+            "id": 3,
+            "title": "Prepare Distribution Package and Documentation",
+            "description": "Package the signed APK and prepare distribution materials for Play Store or direct testers.",
+            "dependencies": [
+              2
+            ],
+            "details": "Gather the signed APK, release notes, and any required assets (screenshots, feature graphics). Prepare a README or instructions for testers or Play Store submission. Ensure all metadata and documentation are complete and accurate.",
+            "status": "pending",
+            "testStrategy": "Review the package contents for completeness. Submit to Play Store internal testing or distribute directly to testers and confirm successful installation and feedback collection."
+          }
+        ]
+      },
+      {
+        "id": 24,
+        "title": "Design Settings Screen for Advanced Features",
+        "description": "Prepare UI for entering Garmin Connect credentials for future automation.",
+        "details": "Create settings screen with fields for email and password. Store credentials securely using Android Keystore.",
+        "testStrategy": "Enter and save credentials; verify secure storage.",
+        "priority": "low",
+        "dependencies": [
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design UI Layout for Garmin Connect Credential Entry",
+            "description": "Create a clean, uncluttered settings screen layout for entering Garmin Connect email and password.",
+            "dependencies": [],
+            "details": "Use Material Design components such as TextInput fields for email and password. Ensure labels are clear and meaningful, following Android settings guidelines. Group credential fields under a relevant heading and provide supporting text if needed. Layout must be responsive for various screen sizes and orientations.",
+            "status": "pending",
+            "testStrategy": "Verify that the UI displays correctly on multiple device sizes and orientations. Check that labels and supporting text are clear and accessible."
+          },
+          {
+            "id": 2,
+            "title": "Implement Secure Credential Input and Validation",
+            "description": "Add logic to handle user input for credentials, including validation and error feedback.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement input validation for email format and password requirements. Provide immediate feedback for invalid entries. Use password masking and offer an option to show/hide password. Ensure error messages are concise and follow UX writing best practices.",
+            "status": "pending",
+            "testStrategy": "Test with valid and invalid inputs; verify error messages and input masking work as intended."
+          },
+          {
+            "id": 3,
+            "title": "Integrate Android Keystore for Secure Credential Storage",
+            "description": "Store entered credentials securely using Android Keystore, ensuring no plain text storage.",
+            "dependencies": [
+              2
+            ],
+            "details": "Utilize Android Keystore APIs to encrypt and store credentials. Ensure credentials are never stored in plain text or SharedPreferences. Implement retrieval and update logic for credentials, with appropriate security checks.",
+            "status": "pending",
+            "testStrategy": "Attempt to access stored credentials; verify they are encrypted and cannot be read in plain text. Test credential update and retrieval flows."
+          }
+        ]
+      },
+      {
+        "id": 25,
+        "title": "Implement Secure Credential Storage",
+        "description": "Store Garmin Connect credentials securely for automated upload.",
+        "details": "Use Android Keystore to encrypt and store credentials. Never store in plain text or SharedPreferences.",
+        "testStrategy": "Attempt to access stored credentials; verify encryption and security.",
+        "priority": "low",
+        "dependencies": [
+          24
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Generate and Store Encryption Keys Using Android Keystore",
+            "description": "Create a secure encryption key using the Android Keystore system to ensure credentials are protected by hardware-backed security.",
+            "dependencies": [],
+            "details": "Use the Android Keystore API to generate a key pair or symmetric key. Ensure the key is hardware-backed if available, and configure it to require user authentication if appropriate. Store the key securely within the Keystore so it cannot be exported or accessed by other apps.",
+            "status": "pending",
+            "testStrategy": "Verify key generation and storage by attempting to list and access keys via the Keystore API. Ensure keys are non-exportable and only accessible by the app."
+          },
+          {
+            "id": 2,
+            "title": "Encrypt Garmin Connect Credentials Before Storage",
+            "description": "Encrypt the user's Garmin Connect credentials using the key stored in the Android Keystore prior to saving them locally.",
+            "dependencies": [
+              1
+            ],
+            "details": "Use the Keystore-managed key to encrypt credentials (e.g., username and password) before writing them to persistent storage. Avoid storing any credentials in plain text or in SharedPreferences without encryption. Use secure cryptographic modes and avoid weak ciphers.",
+            "status": "pending",
+            "testStrategy": "Attempt to read stored credentials directly from device storage and verify they are encrypted. Confirm that decryption only works using the Keystore-managed key within the app."
+          },
+          {
+            "id": 3,
+            "title": "Implement Secure Retrieval and Decryption of Credentials",
+            "description": "Safely retrieve and decrypt the stored credentials when needed for automated upload, ensuring the process is protected against unauthorized access.",
+            "dependencies": [
+              2
+            ],
+            "details": "When credentials are needed, retrieve the encrypted data from storage and use the Keystore-managed key to decrypt them in-memory. Ensure decrypted credentials are never persisted or logged. Implement access controls and error handling for failed decryption attempts.",
+            "status": "pending",
+            "testStrategy": "Test retrieval and decryption by simulating credential access. Attempt unauthorized access and verify credentials remain protected. Confirm credentials are only available in-memory during authorized operations."
+          }
+        ]
+      },
+      {
+        "id": 26,
+        "title": "Prototype Automated Upload via Unofficial API",
+        "description": "Implement proof-of-concept for direct upload to Garmin Connect using reconstructed API.",
+        "details": "Analyze Garmin Connect network traffic to identify endpoints. Use secure authentication and POST requests to upload weight data in JSON format.",
+        "testStrategy": "Test with test account; verify successful upload and error handling.",
+        "priority": "low",
+        "dependencies": [
+          25
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Capture and Analyze Garmin Connect Network Traffic",
+            "description": "Monitor and record network requests made by Garmin Connect web or mobile app during weight data uploads.",
+            "dependencies": [],
+            "details": "Use tools like Fiddler, Charles Proxy, or mitmproxy to intercept HTTPS traffic. Focus on authentication flows and weight upload actions. Document request/response structure, headers, and endpoints.",
+            "status": "pending",
+            "testStrategy": "Verify that all relevant endpoints and payloads for weight upload are captured by comparing with actual app behavior."
+          },
+          {
+            "id": 2,
+            "title": "Identify and Document Required API Endpoints and Headers",
+            "description": "Extract and catalog the specific API endpoints, HTTP methods, headers, and cookies needed for authentication and weight upload.",
+            "dependencies": [
+              1
+            ],
+            "details": "Analyze captured traffic to determine which endpoints are used for login, token refresh, and weight data upload. Note any required headers (e.g., DI-Backend, cookies like JWT_FGP) and authentication tokens.",
+            "status": "pending",
+            "testStrategy": "Cross-check identified endpoints and headers by replaying requests with test data and confirming expected responses."
+          },
+          {
+            "id": 3,
+            "title": "Implement Secure Authentication Flow",
+            "description": "Develop code to securely authenticate with Garmin Connect using observed API patterns, supporting MFA if required.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement login logic using username/password, handle multi-factor authentication if present, and manage session tokens and cookies. Store credentials securely and refresh tokens as needed.",
+            "status": "pending",
+            "testStrategy": "Test authentication with valid and invalid credentials, including MFA scenarios, and verify session persistence and token refresh."
+          },
+          {
+            "id": 4,
+            "title": "Send POST Requests to Upload Weight Data in JSON Format",
+            "description": "Construct and send authenticated POST requests to the identified endpoint to upload weight data in the required JSON structure.",
+            "dependencies": [
+              3
+            ],
+            "details": "Build the JSON payload as observed in captured traffic. Set all required headers and cookies. Use secure HTTP client libraries to send requests and handle responses.",
+            "status": "pending",
+            "testStrategy": "Upload test weight data and confirm successful creation in Garmin Connect. Inspect server responses for errors or confirmation."
+          },
+          {
+            "id": 5,
+            "title": "Implement Robust Response and Error Handling",
+            "description": "Handle all possible API responses, including success, authentication errors, and upload failures, with clear logging and retry logic.",
+            "dependencies": [
+              4
+            ],
+            "details": "Parse API responses, detect error codes (e.g., 400, 401, 403), and provide actionable error messages. Implement retry logic for transient failures and log all interactions for debugging.",
+            "status": "pending",
+            "testStrategy": "Simulate various error conditions (invalid token, network failure, bad payload) and verify correct error handling, user messaging, and retry behavior."
+          }
+        ]
+      },
+      {
+        "id": 27,
+        "title": "Implement UI Toggle for Automation Feature",
+        "description": "Add UI control to enable/disable automated upload.",
+        "details": "Provide switch or checkbox in settings. Update main screen actions based on toggle state.",
+        "testStrategy": "Toggle automation and verify UI and workflow changes.",
+        "priority": "low",
+        "dependencies": [
+          24,
+          26
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add Toggle Control to Settings Screen",
+            "description": "Implement a switch or checkbox in the settings screen to enable or disable the automated upload feature.",
+            "dependencies": [],
+            "details": "Use a standard toggle UI component such as SwitchMaterial for Android or a styled checkbox for web. Ensure the toggle is clearly labeled and its state persists across app restarts. The toggle should immediately reflect changes without requiring a separate save action. Follow platform-specific guidelines for accessibility and visual feedback.",
+            "status": "pending",
+            "testStrategy": "Verify that the toggle appears in the settings screen, is labeled correctly, and changes state on user interaction. Confirm that the state persists after closing and reopening the app."
+          },
+          {
+            "id": 2,
+            "title": "Update Main Screen Actions Based on Toggle State",
+            "description": "Modify main screen actions and UI elements to respond dynamically to the automation toggle state.",
+            "dependencies": [
+              1
+            ],
+            "details": "Read the toggle state from settings and update main screen actions accordingly. If automation is enabled, show or activate automated upload actions; if disabled, hide or deactivate them. Ensure that UI feedback is immediate and consistent with the toggle state. Handle edge cases such as state changes while the main screen is active.",
+            "status": "pending",
+            "testStrategy": "Toggle automation on and off, then verify that main screen actions and UI elements update instantly and correctly. Test with various app states, including navigation and background/foreground transitions."
+          }
+        ]
+      },
+      {
+        "id": 28,
+        "title": "Handle API Authentication and Error States",
+        "description": "Implement error handling for failed login and upload attempts.",
+        "details": "Detect authentication failures and upload errors. Show appropriate messages and allow retry.",
+        "testStrategy": "Simulate API failures and verify error handling and user messaging.",
+        "priority": "low",
+        "dependencies": [
+          26
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Detect and Handle Authentication Failures",
+            "description": "Implement logic to detect failed login attempts and authentication errors from the API.",
+            "dependencies": [],
+            "details": "Monitor API responses for authentication-related error codes (e.g., 401 Unauthorized, INVALID_AUTHENTICATION). Ensure error payloads are parsed consistently. Avoid exposing sensitive information in error messages. Log failures for debugging and support purposes.",
+            "status": "pending",
+            "testStrategy": "Simulate invalid credentials and expired tokens; verify detection and logging of authentication failures."
+          },
+          {
+            "id": 2,
+            "title": "Detect and Handle Upload Errors",
+            "description": "Implement error handling for failed upload attempts, including network and validation errors.",
+            "dependencies": [
+              1
+            ],
+            "details": "Check API responses for upload-related errors (e.g., 400 Bad Request, 500 Internal Server Error). Parse error codes and messages, ensuring structured and actionable feedback. Log error details for troubleshooting. Avoid vague or technical jargon in user-facing messages.",
+            "status": "pending",
+            "testStrategy": "Simulate upload failures (invalid data, network issues); verify error detection and logging."
+          },
+          {
+            "id": 3,
+            "title": "Display User Messages and Implement Retry Logic",
+            "description": "Show appropriate user-facing messages for authentication and upload errors, and allow retry attempts.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Display clear, actionable messages to users based on error type (e.g., 'Login failed, please check your credentials'). Provide a retry option for both login and upload failures. Ensure messages do not expose sensitive details. Track retry attempts and prevent infinite loops.",
+            "status": "pending",
+            "testStrategy": "Trigger authentication and upload errors; verify correct messages are shown and retry functionality works as expected."
+          }
+        ]
+      },
+      {
+        "id": 29,
+        "title": "Document User Instructions and Privacy Policy",
+        "description": "Provide clear instructions for manual and automated workflows, and privacy policy for credential handling.",
+        "details": "Include documentation in app and/or as a separate file. Explain manual import, risks of automation, and data privacy.",
+        "testStrategy": "Verify documentation is accessible and covers all required topics.",
+        "priority": "low",
+        "dependencies": [
+          9,
+          24,
+          25,
+          26
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Draft User Instructions for Manual and Automated Workflows",
+            "description": "Create clear, step-by-step instructions for both manual import and automated upload workflows, ensuring users understand each process.",
+            "dependencies": [],
+            "details": "Structure instructions with headings and subheadings for manual and automated workflows. Use simple language, avoid jargon, and include visuals (screenshots or diagrams) to illustrate key steps. Highlight the differences, prerequisites, and any special considerations for each workflow. Ensure the documentation is accessible within the app and/or as a separate file.",
+            "status": "pending",
+            "testStrategy": "Have a non-developer user follow the instructions for both workflows and confirm successful completion without additional guidance."
+          },
+          {
+            "id": 2,
+            "title": "Document Risks and Limitations of Automation",
+            "description": "Explain the risks, limitations, and potential issues users may encounter when using automated credential-based workflows.",
+            "dependencies": [
+              1
+            ],
+            "details": "List possible risks such as failed uploads, credential misuse, or loss of control over data. Clearly state any limitations of the automation feature and provide troubleshooting tips. Use concise language and, where appropriate, visual cues (e.g., warning icons) to draw attention to critical information.",
+            "status": "pending",
+            "testStrategy": "Review documentation for completeness and clarity; verify that all known risks and limitations are covered and understandable to users."
+          },
+          {
+            "id": 3,
+            "title": "Write and Integrate Privacy Policy for Credential Handling",
+            "description": "Draft a privacy policy section that details how user credentials are stored, used, and protected within the app.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Describe the credential storage mechanism (e.g., use of Android Keystore), clarify that credentials are never stored in plain text, and explain user rights regarding their data. Ensure the privacy policy is accessible from within the app and/or as a separate file, and uses language appropriate for non-technical users.",
+            "status": "pending",
+            "testStrategy": "Check that the privacy policy accurately reflects implementation, is easily accessible, and is written in clear, user-friendly language."
+          }
+        ]
+      },
+      {
+        "id": 30,
+        "title": "Conduct User Acceptance Testing",
+        "description": "Test the app with real users to validate usability and reliability.",
+        "details": "Recruit users matching target profile. Collect feedback on manual and automated flows, error handling, and overall experience.",
+        "testStrategy": "Analyze feedback and bug reports; iterate as needed.",
+        "priority": "medium",
+        "dependencies": [
+          23,
+          29
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Prepare UAT Plan, Test Cases, and Recruit Target Users",
+            "description": "Define the UAT objectives, scope, acceptance criteria, and test scenarios. Recruit users matching the target profile and ensure all prerequisites are met.",
+            "dependencies": [],
+            "details": "Document business and functional requirements. Develop a UAT test plan outlining objectives, entry/exit criteria, and test scenarios. Prepare test data and ensure the test environment mirrors production. Recruit and brief users who fit the target demographic. Ensure all participation agreements and access credentials are in place.",
+            "status": "pending",
+            "testStrategy": "Review documentation for completeness and verify that recruited users match the intended profile."
+          },
+          {
+            "id": 2,
+            "title": "Execute User Acceptance Tests and Collect Feedback",
+            "description": "Guide users through manual and automated flows, error handling, and overall app experience. Collect structured feedback and bug reports.",
+            "dependencies": [
+              1
+            ],
+            "details": "Facilitate UAT sessions where users perform predefined test cases covering all critical workflows. Provide clear instructions and support channels. Use feedback forms, bug tracking tools, and direct observation to capture usability issues, errors, and user impressions.",
+            "status": "pending",
+            "testStrategy": "Verify that all test cases are executed and feedback is collected for each. Confirm that issues are logged with sufficient detail for triage."
+          },
+          {
+            "id": 3,
+            "title": "Analyze Results, Report Issues, and Recommend Improvements",
+            "description": "Review all feedback and bug reports, categorize issues by severity, and summarize findings. Present actionable recommendations to stakeholders.",
+            "dependencies": [
+              2
+            ],
+            "details": "Aggregate test results and feedback. Analyze pass/fail rates, categorize defects, and assess alignment with acceptance criteria. Prepare a summary report with prioritized recommendations for fixes or improvements. Present findings to the project team and stakeholders for decision-making.",
+            "status": "pending",
+            "testStrategy": "Check that all feedback and issues are accounted for in the report. Validate that recommendations are actionable and aligned with test findings."
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2025-10-24T09:09:09.436Z",
+      "updated": "2025-10-24T09:09:09.436Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

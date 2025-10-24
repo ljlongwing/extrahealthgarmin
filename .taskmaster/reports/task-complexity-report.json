@@ -1,0 +1,253 @@
+{
+	"meta": {
+		"generatedAt": "2025-10-24T09:14:22.964Z",
+		"tasksAnalyzed": 30,
+		"totalTasks": 30,
+		"analysisCount": 30,
+		"thresholdScore": 5,
+		"projectName": "Taskmaster",
+		"usedResearch": false
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"taskTitle": "Initialize Android Project",
+			"complexityScore": 3,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down the initialization of an Android project into subtasks such as setting up the project in Android Studio, configuring Gradle and dependencies, and verifying build/run on emulator and device.",
+			"reasoning": "This is a standard procedure for any Android project and is well-documented in official guides and tutorials. The main effort involves project setup, Gradle configuration, and basic compatibility checks, which are straightforward but require attention to detail to avoid misconfiguration. Testing on both emulator and device adds a minor layer of complexity, but no advanced logic or custom implementation is needed.[1][2][4]"
+		},
+		{
+			"taskId": 2,
+			"taskTitle": "Configure AndroidManifest for Share Target",
+			"complexityScore": 4,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "List subtasks for updating AndroidManifest.xml to register the app as a share target for multiple CSV MIME types and verifying correct intent handling.",
+			"reasoning": "While modifying the manifest is a common Android task, registering multiple MIME types and ensuring correct intent-filter configuration can be error-prone. Testing across different apps and file types adds some complexity, but the implementation is mostly declarative and does not require significant custom logic."
+		},
+		{
+			"taskId": 9,
+			"taskTitle": "Implement Main UI Screen",
+			"complexityScore": 5,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Decompose the main UI screen implementation into subtasks such as designing the layout, implementing state management, wiring up UI elements, and handling transitions between states.",
+			"reasoning": "Designing a single-screen UI with clear state management involves both UI/UX design and implementation. Handling multiple states (initial, processing, success, error) and ensuring smooth transitions require careful planning and testing. While not highly complex, it is more involved than basic UI tasks due to the need for robust state management and user feedback."
+		},
+		{
+			"taskId": 12,
+			"taskTitle": "Implement Error State and Retry",
+			"complexityScore": 4,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "Identify subtasks for displaying error messages, implementing retry logic, and resetting the UI to the initial state.",
+			"reasoning": "This task requires handling error scenarios gracefully and providing a retry mechanism. While the logic is not complex, ensuring that all error states are covered and that the UI resets correctly adds moderate complexity, especially in coordination with the main UI state machine."
+		},
+		{
+			"taskId": 17,
+			"taskTitle": "Implement Unit Tests for Parsing Logic",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down unit test implementation for parsing logic into subtasks such as writing tests for multiline records, date conversion, and handling missing or invalid fields.",
+			"reasoning": "Unit testing parsing logic requires covering a variety of edge cases, including multiline records, different date formats, and missing fields. Designing comprehensive tests and ensuring coverage for all scenarios adds to the complexity, but the task is well-scoped and does not involve integration with external systems."
+		},
+		{
+			"taskId": 18,
+			"taskTitle": "Implement Unit Tests for Output Generation",
+			"complexityScore": 4,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "List subtasks for writing unit tests to validate CSV output format, including header correctness, field order, and field presence.",
+			"reasoning": "Testing output generation is less complex than parsing, as it mainly involves verifying that the output matches a fixed format. However, ensuring that all field mapping and formatting requirements are met, and that edge cases are covered, requires careful test design."
+		},
+		{
+			"taskId": 27,
+			"taskTitle": "Implement UI Toggle for Automation Feature",
+			"complexityScore": 3,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "Identify subtasks for adding a toggle control to the settings screen and updating main screen actions based on the toggle state.",
+			"reasoning": "Adding a UI toggle is a straightforward UI task. The main complexity lies in ensuring that the toggle state is correctly reflected in the app's behavior and that the UI updates accordingly. No advanced logic or external dependencies are involved."
+		},
+		{
+			"taskId": 26,
+			"taskTitle": "Prototype Automated Upload via Unofficial API",
+			"complexityScore": 8,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down the prototype implementation into subtasks such as analyzing network traffic, identifying API endpoints, implementing authentication, sending POST requests, and handling responses/errors.",
+			"reasoning": "This task involves reverse engineering an unofficial API, which is inherently complex and risky. It requires network analysis, secure handling of credentials, and robust error handling. The lack of official documentation and potential for API changes or blocking increases the technical challenge and maintenance risk."
+		},
+		{
+			"taskId": 28,
+			"taskTitle": "Handle API Authentication and Error States",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "List subtasks for detecting authentication failures, handling upload errors, displaying user messages, and implementing retry logic.",
+			"reasoning": "Handling authentication and error states for an unofficial API requires careful implementation to ensure security and good user experience. While not as complex as the API integration itself, it involves multiple failure scenarios and user feedback paths."
+		},
+		{
+			"taskId": 10,
+			"taskTitle": "Display Processing Progress",
+			"complexityScore": 3,
+			"recommendedSubtasks": 2,
+			"expansionPrompt": "Identify subtasks for implementing a progress indicator and updating the UI with filename and processing status.",
+			"reasoning": "Displaying a progress indicator is a standard UI task in Android development. The main challenge is updating the UI in response to background processing, but this is well-supported by Android frameworks and does not require complex logic."
+		},
+		{
+			"taskId": 3,
+			"taskTitle": "Implement File Receiving via Intent",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on implement file receiving via intent.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 4,
+			"taskTitle": "Validate Input File Format",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on validate input file format.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 5,
+			"taskTitle": "Parse CSV with Robust Multiline Support",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on parse csv with robust multiline support.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 6,
+			"taskTitle": "Extract and Normalize Data Fields",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on extract and normalize data fields.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 7,
+			"taskTitle": "Handle Missing or Invalid Data",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on handle missing or invalid data.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 8,
+			"taskTitle": "Generate Garmin-Compatible CSV Output",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on generate garmin-compatible csv output.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 11,
+			"taskTitle": "Show Success Summary",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on show success summary.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 13,
+			"taskTitle": "Save Output File to Downloads Folder",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on save output file to downloads folder.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 14,
+			"taskTitle": "Open Garmin Connect Import Page",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on open garmin connect import page.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 15,
+			"taskTitle": "Provide Help/FAQ for Import Errors",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on provide help/faq for import errors.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 16,
+			"taskTitle": "Optimize CSV Processing Performance",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on optimize csv processing performance.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 19,
+			"taskTitle": "Implement Integration Test for End-to-End Flow",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on implement integration test for end-to-end flow.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 20,
+			"taskTitle": "Support Multiple MIME Types for File Reception",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on support multiple mime types for file reception.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 21,
+			"taskTitle": "Localize UI for Russian and English",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on localize ui for russian and english.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 22,
+			"taskTitle": "Implement Logging for Diagnostics",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on implement logging for diagnostics.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 23,
+			"taskTitle": "Implement MVP Release Build and Distribution",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on implement mvp release build and distribution.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 24,
+			"taskTitle": "Design Settings Screen for Advanced Features",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on design settings screen for advanced features.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 25,
+			"taskTitle": "Implement Secure Credential Storage",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on implement secure credential storage.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 29,
+			"taskTitle": "Document User Instructions and Privacy Policy",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on document user instructions and privacy policy.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		},
+		{
+			"taskId": 30,
+			"taskTitle": "Conduct User Acceptance Testing",
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down this task with a focus on conduct user acceptance testing.",
+			"reasoning": "Automatically added due to missing analysis in AI response."
+		}
+	]
+}
