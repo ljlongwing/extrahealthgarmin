@@ -5,6 +5,9 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Date
 
 class CsvValidator {
     
@@ -181,6 +184,145 @@ class CsvValidator {
         
         return fields
     }
+    
+    fun validateRecord(record: Map<String, String>): RecordValidationResult {
+        val missingFields = mutableListOf<String>()
+        val invalidFields = mutableListOf<String>()
+        val modifiedValues = mutableMapOf<String, String>()
+        
+        // Check required fields and their formats
+        val requiredFields = mapOf(
+            "Дата" to "date",
+            "Вес (кг)" to "weight"
+        )
+        
+        requiredFields.forEach { (russianHeader, fieldName) ->
+            val value = record[russianHeader]
+            
+            when {
+                value.isNullOrBlank() -> {
+                    missingFields.add(russianHeader)
+                    modifiedValues[russianHeader] = getDefaultForField(fieldName)
+                }
+                fieldName == "date" && !isValidDate(value) -> {
+                    invalidFields.add("$russianHeader (invalid date format)")
+                    modifiedValues[russianHeader] = getDefaultForField(fieldName)
+                }
+                fieldName == "weight" && !isValidWeight(value) -> {
+                    invalidFields.add("$russianHeader (invalid weight value)")
+                    modifiedValues[russianHeader] = getDefaultForField(fieldName)
+                }
+            }
+        }
+        
+        // Check optional fields (BMI, Fat)
+        val optionalFields = mapOf(
+            "ИМТ" to "bmi",
+            "Жир (% тела)" to "fat"
+        )
+        
+        optionalFields.forEach { (russianHeader, fieldName) ->
+            val value = record[russianHeader]
+            
+            if (!value.isNullOrBlank()) {
+                when {
+                    fieldName == "bmi" && !isValidBMI(value) -> {
+                        invalidFields.add("$russianHeader (invalid BMI value)")
+                        modifiedValues[russianHeader] = getDefaultForField(fieldName)
+                    }
+                    fieldName == "fat" && !isValidFat(value) -> {
+                        invalidFields.add("$russianHeader (invalid fat percentage)")
+                        modifiedValues[russianHeader] = getDefaultForField(fieldName)
+                    }
+                }
+            }
+        }
+        
+        val hasIssues = missingFields.isNotEmpty() || invalidFields.isNotEmpty()
+        val isValid = !hasIssues
+        
+        return RecordValidationResult(
+            isValid = isValid,
+            missingFields = missingFields,
+            invalidFields = invalidFields,
+            modifiedValues = modifiedValues,
+            message = if (hasIssues) {
+                val issues = mutableListOf<String>()
+                if (missingFields.isNotEmpty()) issues.add("Missing: ${missingFields.joinToString(", ")}")
+                if (invalidFields.isNotEmpty()) issues.add("Invalid: ${invalidFields.joinToString(", ")}")
+                "Record has issues: ${issues.joinToString("; ")}"
+            } else {
+                "Record is valid"
+            }
+        )
+    }
+    
+    private fun isValidDate(dateString: String): Boolean {
+        val formats = listOf(
+            "yyyy-MM-dd",
+            "dd.MM.yyyy",
+            "dd/MM/yyyy",
+            "MM/dd/yyyy"
+        )
+        
+        return formats.any { format ->
+            try {
+                val sdf = SimpleDateFormat(format, Locale.getDefault())
+                sdf.isLenient = false
+                val parsedDate = sdf.parse(dateString)
+                parsedDate != null
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+    
+    private fun isValidWeight(weightString: String): Boolean {
+        return try {
+            val normalized = weightString.replace(",", ".").trim()
+            val weight = normalized.toFloatOrNull()
+            weight != null && weight > 0 && weight < 1000
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    private fun isValidBMI(bmiString: String): Boolean {
+        return try {
+            val bmi = bmiString.replace(",", ".").trim().toFloatOrNull()
+            bmi != null && bmi > 0 && bmi < 100
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    private fun isValidFat(fatString: String): Boolean {
+        return try {
+            val fat = fatString.replace(",", ".").trim().toFloatOrNull()
+            fat != null && fat >= 0 && fat <= 100
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    private fun getDefaultForField(fieldName: String): String {
+        return when (fieldName) {
+            "date" -> {
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                sdf.format(Date())
+            }
+            "weight", "bmi", "fat" -> "0.0"
+            else -> ""
+        }
+    }
+    
+    data class RecordValidationResult(
+        val isValid: Boolean,
+        val missingFields: List<String>,
+        val invalidFields: List<String>,
+        val modifiedValues: Map<String, String>,
+        val message: String
+    )
     
     data class EncodingValidationResult(
         val isValid: Boolean,
