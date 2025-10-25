@@ -76,3 +76,27 @@
 - Process files in chunks to avoid memory issues
 - Use Buffered streams for file I/O
 - Target <2 seconds for 5MB files on mid-range devices
+
+## Post-Task Validation (Add after each completed task)
+
+### Build Verification
+After completing any task, run these commands to ensure everything works:
+
+```bash
+# Build project
+./gradlew build
+
+# Run unit tests
+./gradlew test
+
+# Verify specific test class
+./gradlew test --tests "com.example.parse.CsvParserTest"
+
+# Check for lint issues
+./gradlew lint
+
+# Verify APK generation
+./gradlew assembleDebug
+```
+
+All builds and tests should pass without errors before proceeding to next task.
