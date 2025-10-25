@@ -133,7 +133,7 @@
         "dependencies": [
           3
         ],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -141,7 +141,7 @@
             "description": "Verify that the uploaded CSV file uses UTF-8 encoding and does not include a Byte Order Mark (BOM).",
             "dependencies": [],
             "details": "Programmatically inspect the file's byte sequence to confirm UTF-8 encoding and ensure no BOM is present. Reject files with other encodings or BOM, as required for compatibility with Russian characters and downstream processing.",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": "Test with CSV files encoded in UTF-8 (with and without BOM), UTF-16, and other encodings. Confirm only valid UTF-8 without BOM is accepted."
           },
           {
@@ -152,7 +152,7 @@
               1
             ],
             "details": "Analyze the file to confirm that commas are consistently used to separate fields in every row. Reject files using semicolons, tabs, or mixed delimiters.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test with files using commas, semicolons, tabs, and mixed delimiters. Verify only comma-delimited files are accepted."
           },
           {
@@ -163,7 +163,7 @@
               2
             ],
             "details": "Parse the first row and compare each column name against the required Russian header list. Flag missing, extra, or misspelled columns. Provide clear error messages for mismatches.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test with files containing correct, missing, extra, and misspelled Russian headers. Confirm only files with the exact expected headers are accepted."
           }
         ]
@@ -178,7 +178,7 @@
         "dependencies": [
           4
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -186,7 +186,7 @@
             "description": "Create logic to accurately detect and merge multiline records in CSV files.",
             "dependencies": [],
             "details": "Analyze CSV structure to identify fields that may contain embedded newlines. Implement state-based or regex-based detection to determine record boundaries, ensuring that multiline fields are merged correctly into single records. Consider edge cases such as quoted fields and escaped characters.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Use sample CSV files with known multiline records. Verify that records are merged correctly and no data is lost or misaligned."
           },
           {
@@ -197,7 +197,7 @@
               1
             ],
             "details": "Utilize or extend a CSV parsing library (e.g., Apache Commons CSV) to process input streams, ensuring that multiline fields are parsed according to CSV standards. Configure the parser to recognize and correctly handle quoted fields containing newlines. Integrate the multiline detection logic from subtask 1.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Parse various CSV samples with multiline fields and complex quoting. Compare parsed output to expected records for correctness."
           },
           {
@@ -208,7 +208,7 @@
               2
             ],
             "details": "After parsing, check each record for completeness and correct field count. Normalize records by trimming whitespace, resolving any parsing ambiguities, and preparing data for further processing (e.g., date parsing). Log or report any malformed records for review.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Run validation on parsed output from multiple test files. Confirm that all records are properly structured and any errors are flagged."
           }
         ]
@@ -223,7 +223,7 @@
         "dependencies": [
           5
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -231,7 +231,7 @@
             "description": "Identify and map the relevant columns from the Tefal CSV (Weight, BMI, Fat, Date) to the standardized target field names.",
             "dependencies": [],
             "details": "Analyze the parsed CSV structure, determine which columns correspond to Weight, BMI, Fat, and Date, and create a mapping to the target schema. Handle variations in column headers using a mapping dictionary or similar approach.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test with sample Tefal CSV files containing different column header variations to ensure correct mapping."
           },
           {
@@ -242,7 +242,7 @@
               1
             ],
             "details": "Convert numeric values to use a period ('.') as the decimal separator, removing any commas or locale-specific formatting. Validate that all values are numeric and handle any conversion errors.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Check output for multiple records with varying decimal formats; verify all numbers use '.' and are valid floats."
           },
           {
@@ -253,7 +253,7 @@
               1
             ],
             "details": "Parse the Date field from the mapped column, handling any locale-specific or non-standard formats, and convert it to the ISO 8601 format (YYYY-MM-DD). Use robust parsing to handle edge cases.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test with dates in various formats (including Russian month abbreviations) and verify all are converted to YYYY-MM-DD."
           }
         ]
@@ -1307,7 +1307,7 @@
     ],
     "metadata": {
       "created": "2025-10-24T09:09:09.436Z",
-      "updated": "2025-10-25T19:49:56.309Z",
+      "updated": "2025-10-25T20:10:13.445Z",
       "description": "Tasks for master context"
     }
   }

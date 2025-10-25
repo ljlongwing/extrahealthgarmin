@@ -16,6 +16,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.tefal2garmin.utils.CsvReader
 import com.example.tefal2garmin.utils.CsvValidator
+import com.example.tefal2garmin.utils.MultilineCsvDetector
 
 class MainActivity : AppCompatActivity() {
     
