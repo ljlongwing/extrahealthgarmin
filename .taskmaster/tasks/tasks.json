@@ -9,7 +9,7 @@
         "testStrategy": "Verify project builds and runs on emulator and physical device with API 26+.",
         "priority": "high",
         "dependencies": [],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -88,7 +88,7 @@
         "dependencies": [
           2
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -96,7 +96,7 @@
             "description": "Handle the incoming intent and extract the URI of the CSV file provided by another app.",
             "dependencies": [],
             "details": "Implement logic in the Activity or BroadcastReceiver to receive the intent, check its action and type, and extract the file URI from intent extras (e.g., intent.getData()). Ensure the intent is properly filtered in the manifest to accept CSV files.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Send a CSV file from another app and verify the correct URI is extracted from the intent."
           },
           {
@@ -107,7 +107,7 @@
               1
             ],
             "details": "Utilize ContentResolver to open an InputStream from the URI. Use BufferedReader to read the CSV data line by line, splitting each line into fields. Store the parsed data in a suitable structure, such as a List of String arrays or a custom model class[1].",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Provide a valid CSV URI and verify that the file is read and parsed correctly, with all rows and columns accessible."
           },
           {
@@ -118,7 +118,7 @@
               1
             ],
             "details": "Check and request runtime permissions if the URI requires access (e.g., READ_EXTERNAL_STORAGE). Use ContentResolver and OpenableColumns to query file metadata like display name and size[3]. Handle permission denial gracefully and inform the user.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test with files from different sources (internal, external, cloud) and verify permission handling and metadata retrieval."
           }
         ]
@@ -133,7 +133,7 @@
         "dependencies": [
           3
         ],
-        "status": "pending",
+        "status": "in-progress",
         "subtasks": [
           {
             "id": 1,
@@ -141,7 +141,7 @@
             "description": "Verify that the uploaded CSV file uses UTF-8 encoding and does not include a Byte Order Mark (BOM).",
             "dependencies": [],
             "details": "Programmatically inspect the file's byte sequence to confirm UTF-8 encoding and ensure no BOM is present. Reject files with other encodings or BOM, as required for compatibility with Russian characters and downstream processing.",
-            "status": "pending",
+            "status": "in-progress",
             "testStrategy": "Test with CSV files encoded in UTF-8 (with and without BOM), UTF-16, and other encodings. Confirm only valid UTF-8 without BOM is accepted."
           },
           {
@@ -1307,7 +1307,7 @@
     ],
     "metadata": {
       "created": "2025-10-24T09:09:09.436Z",
-      "updated": "2025-10-25T17:39:56.841Z",
+      "updated": "2025-10-25T19:49:56.309Z",
       "description": "Tasks for master context"
     }
   }
