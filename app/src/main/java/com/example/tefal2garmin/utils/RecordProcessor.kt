@@ -26,12 +26,13 @@ class RecordProcessor {
             
             // Convert to Garmin format
             val garminFormat = try {
-                val date = processedRecord["Дата"] ?: ""
+                val rawDate = processedRecord["Дата"] ?: ""
+                val normalizedDate = CsvFieldMapper.normalizeDate(rawDate)
                 val weight = processedRecord["Вес (кг)"]
                 val bmi = processedRecord["ИМТ"]
                 val fat = processedRecord["Жир (% тела)"]
-                
-                CsvFieldMapper.mapToGarminFormat(weight, bmi, fat, date)
+
+                CsvFieldMapper.mapToGarminFormat(weight, bmi, fat, normalizedDate)
             } catch (e: Exception) {
                 return ProcessingResult(
                     success = false,

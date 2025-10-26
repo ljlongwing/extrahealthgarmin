@@ -83,7 +83,7 @@ class RecordProcessorTest {
         assertTrue("Validation should pass for valid formats", result.validationResult.isValid)
         
         val garminRecord = result.record
-        assertEquals("Should preserve date format", "15.01.2024", garminRecord["Date"])
+        assertEquals("Should normalize date format", "2024-01-15", garminRecord["Date"])
         assertNotNull("Should handle comma decimal in weight", garminRecord["Weight"])
         assertEquals("Should preserve BMI", "24.5", garminRecord["BMI"])
         assertEquals("Should preserve Fat", "20.1", garminRecord["Fat"])

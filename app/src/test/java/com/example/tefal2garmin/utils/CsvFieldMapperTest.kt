@@ -11,18 +11,18 @@ class CsvFieldMapperTest {
     fun testNormalizeDate_RussianMonthAbbreviations() {
         // Test various Russian month abbreviations
         val testCases = mapOf(
-            "15 янв 2024" to "15-01-2024",
-            "5 фев 2023" to "05-02-2023",
-            "24 мар 2024" to "24-03-2024",
-            "1 апр 2024" to "01-04-2024",
-            "10 мая 2024" to "10-05-2024",
-            "15 июн 2024" to "15-06-2024",
-            "20 июл 2024" to "20-07-2024",
-            "25 авг 2024" to "25-08-2024",
-            "30 сен 2024" to "30-09-2024",
-            "5 окт 2024" to "05-10-2024",
-            "10 ноя 2024" to "10-11-2024",
-            "25 дек 2024" to "25-12-2024"
+            "15 янв 2024" to "2024-01-15",
+            "5 фев 2023" to "2023-02-05",
+            "24 мар 2024" to "2024-03-24",
+            "1 апр 2024" to "2024-04-01",
+            "10 мая 2024" to "2024-05-10",
+            "15 июн 2024" to "2024-06-15",
+            "20 июл 2024" to "2024-07-20",
+            "25 авг 2024" to "2024-08-25",
+            "30 сен 2024" to "2024-09-30",
+            "5 окт 2024" to "2024-10-05",
+            "10 ноя 2024" to "2024-11-10",
+            "25 дек 2024" to "2024-12-25"
         )
 
         testCases.forEach { (input, expected) ->
@@ -34,10 +34,10 @@ class CsvFieldMapperTest {
     @Test
     fun testNormalizeDate_DotFormat() {
         val testCases = mapOf(
-            "15.01.2024" to "15-01-2024",
-            "05.02.2023" to "05-02-2023",
-            "24.12.2024" to "24-12-2024",
-            "1.1.2024" to "01-01-2024"  // Single digit day and month
+            "15.01.2024" to "2024-01-15",
+            "05.02.2023" to "2023-02-05",
+            "24.12.2024" to "2024-12-24",
+            "1.1.2024" to "2024-01-01"  // Single digit day and month
         )
 
         testCases.forEach { (input, expected) ->
@@ -67,9 +67,9 @@ class CsvFieldMapperTest {
     fun testNormalizeDate_EdgeCases() {
         // Test edge cases
         val edgeCases = mapOf(
-            "1 янв 2024" to "01-01-2024",  // Single digit day
-            "31 дек 2024" to "31-12-2024",  // Last day of year
-            "29 фев 2024" to "29-02-2024"   // Leap year date
+            "1 янв 2024" to "2024-01-01",  // Single digit day
+            "31 дек 2024" to "2024-12-31",  // Last day of year
+            "29 фев 2024" to "2024-02-29"   // Leap year date
         )
 
         edgeCases.forEach { (input, expected) ->
@@ -81,9 +81,9 @@ class CsvFieldMapperTest {
     @Test
     fun testNormalizeDate_WhitespaceHandling() {
         val testCases = mapOf(
-            "  15 янв 2024  " to "15-01-2024",  // Leading/trailing spaces
-            "15  янв  2024" to "15-01-2024",    // Multiple spaces
-            "15.01.2024 " to "15-01-2024"       // Trailing space in dot format
+            "  15 янв 2024  " to "2024-01-15",  // Leading/trailing spaces
+            "15  янв  2024" to "2024-01-15",    // Multiple spaces
+            "15.01.2024 " to "2024-01-15"       // Trailing space in dot format
         )
 
         testCases.forEach { (input, expected) ->
@@ -96,9 +96,9 @@ class CsvFieldMapperTest {
     fun testNormalizeDate_CaseInsensitivity() {
         // Russian month abbreviations should be case insensitive
         val testCases = mapOf(
-            "15 ЯНВ 2024" to "15-01-2024",  // Uppercase
-            "15 Янв 2024" to "15-01-2024",  // Mixed case
-            "15 ФЕВ 2024" to "15-02-2024"   // Uppercase
+            "15 ЯНВ 2024" to "2024-01-15",  // Uppercase
+            "15 Янв 2024" to "2024-01-15",  // Mixed case
+            "15 ФЕВ 2024" to "2024-02-15"   // Uppercase
         )
 
         testCases.forEach { (input, expected) ->
@@ -145,9 +145,9 @@ class CsvFieldMapperTest {
     fun testNormalizeDate_YearRange() {
         // Test various years
         val yearCases = mapOf(
-            "15 янв 2020" to "15-01-2020",
-            "15 янв 2025" to "15-01-2025",
-            "15 янв 1999" to "15-01-1999"
+            "15 янв 2020" to "2020-01-15",
+            "15 янв 2025" to "2025-01-15",
+            "15 янв 1999" to "1999-01-15"
         )
 
         yearCases.forEach { (input, expected) ->

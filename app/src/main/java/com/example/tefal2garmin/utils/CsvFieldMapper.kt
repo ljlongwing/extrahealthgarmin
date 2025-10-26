@@ -70,7 +70,7 @@ class CsvFieldMapper {
 
                             // Validate date (basic check for valid day/month combinations)
                             if (isValidDate(dayInt, monthInt, yearInt)) {
-                                String.format("%02d-%02d-%04d", dayInt, monthInt, yearInt)
+                                String.format("%04d-%02d-%02d", yearInt, monthInt, dayInt)
                             } else {
                                 cleanDate
                             }
@@ -92,7 +92,7 @@ class CsvFieldMapper {
 
                         // Validate date
                         if (isValidDate(dayInt, monthInt, yearInt)) {
-                            String.format("%02d-%02d-%04d", dayInt, monthInt, yearInt)
+                            String.format("%04d-%02d-%02d", yearInt, monthInt, dayInt)
                         } else {
                             cleanDate
                         }
