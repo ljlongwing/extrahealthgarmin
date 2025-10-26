@@ -21,6 +21,34 @@
     <string name="label_try_again">Try Again</string>
     <string name="label_open_garmin">Open Garmin Connect</string>
     <string name="label_help">Help</string>
+
+    <!-- Main Screen Messages -->
+    <string name="welcome_message">Welcome to Tefal2Garmin Sync</string>
+    <string name="instructions_message">Share a CSV file from the Tefal Goodvibes app to convert it for Garmin Connect import</string>
+    <string name="processing_message">Processing...</string>
+
+    <!-- File Status Messages -->
+    <string name="file_received">File received: %s</string>
+    <string name="file_size_status">Size: %s | Starting validation...</string>
+    <string name="file_saved">File saved: %s</string>
+    <string name="file_save_success">File saved successfully</string>
+    <string name="file_save_failed">Failed to save file</string>
+    <string name="no_data_available">No data available to save</string>
+
+    <!-- Error Messages -->
+    <string name="unsupported_file_type">Unsupported file type</string>
+    <string name="content_not_csv">Content does not appear to be CSV data</string>
+    <string name="unsupported_file_dialog_title">Unsupported File Type</string>
+    <string name="unsupported_file_dialog_message">Unsupported file type: %1$s\n\n%2$s\n\nPlease share a CSV file exported from Tefal Goodvibes app.</string>
+    <string name="dialog_ok">OK</string>
+    <string name="error_occurred">Error occurred</string>
+    <string name="please_try_again">Please try again</string>
+
+    <!-- Toast Messages -->
+    <string name="toast_file_save_success">File saved successfully</string>
+    <string name="toast_file_save_failed">Failed to save file</string>
+    <string name="toast_help_open_failed">Failed to open help guide</string>
+    <string name="toast_garmin_open_failed">Failed to open Garmin Connect. Please check if you have a browser installed.</string>
     
     <!-- Help Dialog -->
     <string name="help_title">Help &amp; Troubleshooting</string>

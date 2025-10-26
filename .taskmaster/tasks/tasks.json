@@ -795,28 +795,28 @@
             "status": "pending",
             "testStrategy": "Verify the list against real-world CSV files and MIME type documentation; confirm completeness with sample files from target apps."
           },
-          {
-            "id": 2,
-            "title": "Implement MIME Type Detection and Handling Logic",
-            "description": "Develop logic to detect and correctly process incoming files with any of the identified CSV MIME types.",
-            "dependencies": [
-              1
-            ],
-            "details": "Update file reception code to recognize all documented MIME types. Ensure files with deprecated or non-standard types (e.g., application/csv) are accepted and processed as CSV. Add fallback handling for text/* where content matches CSV structure.",
-            "status": "pending",
-            "testStrategy": "Share files with each supported MIME type and verify correct detection and processing. Use automated tests to simulate file reception scenarios."
-          },
-          {
-            "id": 3,
-            "title": "Test Compatibility Across Devices and Apps",
-            "description": "Systematically test file reception using various CSV MIME types from different devices and apps, focusing on the Tefal Goodvibes app.",
-            "dependencies": [
-              2
-            ],
-            "details": "Prepare test cases with files labeled as each supported MIME type. Share files from multiple sources (e.g., Android, iOS, desktop) and confirm the app receives and processes them correctly. Document any edge cases or failures for further refinement.",
-            "status": "pending",
-            "testStrategy": "Perform manual and automated tests sharing CSV files with different MIME types; verify successful import and correct data parsing for each scenario."
-          }
+           {
+             "id": 2,
+             "title": "Implement MIME Type Detection and Handling Logic",
+             "description": "Develop logic to detect and correctly process incoming files with any of the identified CSV MIME types.",
+             "dependencies": [
+               1
+             ],
+             "details": "Update file reception code to recognize all documented MIME types. Ensure files with deprecated or non-standard types (e.g., application/csv) are accepted and processed as CSV. Add fallback handling for text/* where content matches CSV structure.",
+             "status": "done",
+             "testStrategy": "Share files with each supported MIME type and verify correct detection and processing. Use automated tests to simulate file reception scenarios."
+           },
+           {
+             "id": 3,
+             "title": "Test Compatibility Across Devices and Apps",
+             "description": "Systematically test file reception using various CSV MIME types from different devices and apps, focusing on the Tefal Goodvibes app.",
+             "dependencies": [
+               2
+             ],
+             "details": "Prepare test cases with files labeled as each supported MIME type. Share files from multiple sources (e.g., Android, iOS, desktop) and confirm the app receives and processes them correctly. Document any edge cases or failures for further refinement.",
+             "status": "in-progress",
+             "testStrategy": "Perform manual and automated tests sharing CSV files with different MIME types; verify successful import and correct data parsing for each scenario."
+           }
         ]
       },
       {

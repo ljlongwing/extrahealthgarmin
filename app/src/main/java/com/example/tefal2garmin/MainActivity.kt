@@ -104,8 +104,8 @@ class MainActivity : AppCompatActivity() {
         
         // Update file info if available
         state.fileInfo?.let { fileInfo ->
-            welcomeText.text = "File received: ${fileInfo.fileName}"
-            statusText.text = "Size: ${formatFileSize(fileInfo.fileSize)} | Starting validation..."
+            welcomeText.text = getString(R.string.file_received, fileInfo.fileName)
+            statusText.text = getString(R.string.file_size_status, formatFileSize(fileInfo.fileSize))
         }
         
         // Show help button in appropriate states
@@ -171,20 +171,20 @@ class MainActivity : AppCompatActivity() {
                         
                         Log.d(TAG, "Output file saved to: ${uri.toString()}")
                         runOnUiThread {
-                            resultText.text = "File saved: $fileName"
-                            Toast.makeText(this@MainActivity, "File saved successfully", Toast.LENGTH_SHORT).show()
+                            resultText.text = getString(R.string.file_saved, fileName)
+                            Toast.makeText(this@MainActivity, getString(R.string.toast_file_save_success), Toast.LENGTH_SHORT).show()
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to save file", e)
                         runOnUiThread {
-                            resultText.text = "Failed to save file"
-                            Toast.makeText(this@MainActivity, "Failed to save file", Toast.LENGTH_LONG).show()
+                            resultText.text = getString(R.string.file_save_failed)
+                            Toast.makeText(this@MainActivity, getString(R.string.toast_file_save_failed), Toast.LENGTH_LONG).show()
                         }
                     }
                 } else {
                     Log.w(TAG, "No CSV data available to save")
                     runOnUiThread {
-                        resultText.text = "No data available to save"
+                        resultText.text = getString(R.string.no_data_available)
                     }
                 }
             } else {
@@ -208,7 +208,7 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 if (!validationResult.isValid) {
-                    val errorMsg = validationResult.errorMessage ?: "Unsupported file type"
+                    val errorMsg = validationResult.errorMessage ?: getString(R.string.unsupported_file_type)
                     Log.w(TAG, "Intent validation failed: $errorMsg")
                     showUnsupportedFileTypeError(validationResult.mimeType, errorMsg)
                     return
@@ -245,7 +245,7 @@ class MainActivity : AppCompatActivity() {
                 viewModel.handleTextShare(text)
             } else {
                 Log.w(TAG, "Text content does not appear to be CSV")
-                showUnsupportedFileTypeError(mimeType, "Content does not appear to be CSV data")
+                showUnsupportedFileTypeError(mimeType, getString(R.string.content_not_csv))
             }
         } else {
             // High confidence MIME types - process directly
@@ -255,12 +255,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun showUnsupportedFileTypeError(mimeType: String?, errorMessage: String) {
         val description = MimeTypeValidator.getMimeTypeDescription(mimeType)
-        val fullMessage = "Unsupported file type: $description\n\n$errorMessage\n\nPlease share a CSV file exported from Tefal Goodvibes app."
+        val fullMessage = getString(R.string.unsupported_file_dialog_message, description, errorMessage)
 
         AlertDialog.Builder(this)
-            .setTitle("Unsupported File Type")
+            .setTitle(getString(R.string.unsupported_file_dialog_title))
             .setMessage(fullMessage)
-            .setPositiveButton("OK", null)
+            .setPositiveButton(getString(R.string.dialog_ok), null)
             .show()
     }
     
@@ -308,9 +308,9 @@ class MainActivity : AppCompatActivity() {
     
     private fun showInitialState() {
         welcomeText.visibility = View.VISIBLE
-        welcomeText.text = "Welcome to Tefal2Garmin Sync"
+        welcomeText.text = getString(R.string.welcome_message)
         instructionsText.visibility = View.VISIBLE
-        instructionsText.text = "Share a CSV file from Tefal Goodvibes app to convert it for Garmin Connect import"
+        instructionsText.text = getString(R.string.instructions_message)
         progressBar.visibility = View.INVISIBLE
         statusText.visibility = View.INVISIBLE
         resultText.visibility = View.INVISIBLE
@@ -320,7 +320,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun showProcessingState() {
         welcomeText.visibility = View.INVISIBLE
-        instructionsText.text = "Processing file..."
+        instructionsText.text = getString(R.string.processing_message)
         statusText.visibility = View.VISIBLE
         progressBar.visibility = View.VISIBLE
         resultText.visibility = View.INVISIBLE
@@ -345,12 +345,12 @@ class MainActivity : AppCompatActivity() {
         Log.e(TAG, "Error occurred: $message")
         
         welcomeText.visibility = View.INVISIBLE
-        instructionsText.text = "Error occurred"
+        instructionsText.text = getString(R.string.error_occurred)
         statusText.text = message
         statusText.visibility = View.VISIBLE
         progressBar.visibility = View.INVISIBLE
         resultText.visibility = View.VISIBLE
-        resultText.text = "Please try again"
+        resultText.text = getString(R.string.please_try_again)
         openGarminButton.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.VISIBLE
     }
@@ -378,7 +378,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open troubleshooting guide", e)
-            Toast.makeText(this, "Failed to open help guide", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_help_open_failed), Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -388,7 +388,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open Garmin Connect: ${e.message}", e)
-            Toast.makeText(this, "Failed to open Garmin Connect. Please check if you have a browser installed.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.toast_garmin_open_failed), Toast.LENGTH_LONG).show()
         }
     }
     

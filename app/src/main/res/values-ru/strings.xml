@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tefal2Garmin Синхронизация</string>
+
+    <!-- Error Messages -->
+    <string name="error_empty_file">CSV файл пустой. Пожалуйста, выберите файл, содержащий данные измерений веса.</string>
+    <string name="error_invalid_encoding">Файл имеет неправильную кодировку. Пожалуйста, убедитесь, что CSV файл сохранен в формате UTF-8.</string>
+    <string name="error_invalid_delimiter">CSV файл использует неподдерживаемый разделитель. Пожалуйста, убедитесь, что файл использует запятые (,) в качестве разделителей.</string>
+    <string name="error_invalid_headers">В CSV файле отсутствуют необходимые заголовки. Пожалуйста, убедитесь, что файл содержит столбцы для даты, веса и других данных измерений.</string>
+    <string name="error_file_read_failed">Не удалось прочитать файл. Пожалуйста, проверьте, доступен ли файл и не поврежден ли он.</string>
+    <string name="error_processing_failed">Произошла ошибка при обработке файла. Пожалуйста, попробуйте еще раз или обратитесь в поддержку, если проблема сохраняется.</string>
+    <string name="error_conversion_failed">Не удалось преобразовать данные в формат Garmin. Пожалуйста, проверьте формат ваших данных и попробуйте еще раз.</string>
+    <string name="error_file_save_failed">Не удалось сохранить выходной файл. Пожалуйста, проверьте доступное место в хранилище и разрешения.</string>
+
+    <!-- Success Messages -->
+    <string name="success_file_processed">Преобразование завершено успешно!</string>
+    <string name="success_records_summary">Успешно обработано %1$d записей и создано %2$d записей Garmin</string>
+    <string name="success_ready_to_save">Файл готов к сохранению на устройство</string>
+
+    <!-- UI Labels -->
+    <string name="label_try_again">Попробовать снова</string>
+    <string name="label_open_garmin">Открыть Garmin Connect</string>
+    <string name="label_help">Помощь</string>
+
+    <!-- Main Screen Messages -->
+    <string name="welcome_message">Добро пожаловать в Tefal2Garmin Sync</string>
+    <string name="instructions_message">Поделитесь CSV файлом из приложения Tefal Goodvibes для преобразования в формат импорта Garmin Connect</string>
+    <string name="processing_message">Обработка...</string>
+
+    <!-- File Status Messages -->
+    <string name="file_received">Файл получен: %s</string>
+    <string name="file_size_status">Размер: %s | Начинается проверка...</string>
+    <string name="file_saved">Файл сохранен: %s</string>
+    <string name="file_save_success">Файл успешно сохранен</string>
+    <string name="file_save_failed">Не удалось сохранить файл</string>
+    <string name="no_data_available">Нет данных для сохранения</string>
+
+    <!-- Error Messages -->
+    <string name="unsupported_file_type">Неподдерживаемый тип файла</string>
+    <string name="content_not_csv">Содержимое не похоже на данные CSV</string>
+    <string name="unsupported_file_dialog_title">Неподдерживаемый тип файла</string>
+    <string name="unsupported_file_dialog_message">Неподдерживаемый тип файла: %1$s\n\n%2$s\n\nПожалуйста, поделитесь CSV файлом, экспортированным из приложения Tefal Goodvibes.</string>
+    <string name="dialog_ok">OK</string>
+    <string name="error_occurred">Произошла ошибка</string>
+    <string name="please_try_again">Пожалуйста, попробуйте еще раз</string>
+
+    <!-- Toast Messages -->
+    <string name="toast_file_save_success">Файл успешно сохранен</string>
+    <string name="toast_file_save_failed">Не удалось сохранить файл</string>
+    <string name="toast_help_open_failed">Не удалось открыть руководство помощи</string>
+    <string name="toast_garmin_open_failed">Не удалось открыть Garmin Connect. Пожалуйста, проверьте, установлен ли браузер.</string>
+
+    <!-- Help Dialog -->
+    <string name="help_title">Помощь и устранение неисправностей</string>
+    <string name="help_content">Распространенные проблемы:\n\n• Ошибка загрузки - Подождите 2-3 минуты, повторите\n• Файл не поддерживается - Убедитесь в формате .csv, не .xlsx\n• Отсутствующие поля - Проверьте заголовки: Date,Weight,BMI,Fat\n• Неверный формат - Используйте даты YYYY-MM-DD, десятичные \'.\'\n\n⚠ Никогда не открывайте CSV файлы в Excel!\n\nДля подробного устранения неисправностей нажмите Руководство по устранению неисправностей ниже.</string>
+    <string name="help_close">Закрыть</string>
+    <string name="help_troubleshooting">Руководство по устранению неисправностей</string>
+
+    <!-- Processing Status Messages -->
+    <string name="status_validating_encoding">Проверка кодировки файла...</string>
+    <string name="status_reading_csv">Чтение данных CSV...</string>
+    <string name="status_validating_format">Проверка формата CSV...</string>
+    <string name="status_validating_headers">Проверка заголовков...</string>
+    <string name="status_processing_records">Обработка записей...</string>
+    <string name="status_generating_csv">Создание CSV Garmin...</string>
+</resources>
