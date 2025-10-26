@@ -26,6 +26,7 @@ import com.example.tefal2garmin.data.CsvProcessingResult
 import com.example.tefal2garmin.ui.MainUiState
 import com.example.tefal2garmin.ui.MainViewModel
 import com.example.tefal2garmin.ui.MainViewModelFactory
+import com.example.tefal2garmin.utils.MimeTypeValidator
 import java.text.DecimalFormat
 
 class MainActivity : AppCompatActivity() {
@@ -193,26 +194,74 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun handleIntent(intent: Intent?) {
+        Log.d(TAG, "Handling intent: ${intent?.action}")
+
         when (intent?.action) {
-            Intent.ACTION_SEND -> {
-                val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
-                val sharedUri = getParcelableExtraCompat(intent, Intent.EXTRA_STREAM, Uri::class.java)
-                
-                if (sharedUri != null) {
-                    // Check permissions before processing
+            Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> {
+                // Validate MIME type first
+                val validationResult = MimeTypeValidator.validateIntentForCsv(intent)
+
+                MimeTypeValidator.logMimeTypeHandling(
+                    validationResult.mimeType,
+                    validationResult.uri,
+                    "Intent validation"
+                )
+
+                if (!validationResult.isValid) {
+                    val errorMsg = validationResult.errorMessage ?: "Unsupported file type"
+                    Log.w(TAG, "Intent validation failed: $errorMsg")
+                    showUnsupportedFileTypeError(validationResult.mimeType, errorMsg)
+                    return
+                }
+
+                // Handle valid CSV content
+                if (validationResult.uri != null) {
+                    // URI-based sharing (file)
                     if (checkAndRequestPermissions()) {
-                        viewModel.handleShareIntent(sharedUri)
+                        viewModel.handleShareIntent(validationResult.uri)
                     }
-                } else if (sharedText != null) {
-                    viewModel.handleTextShare(sharedText)
+                } else if (validationResult.textContent != null) {
+                    // Text-based sharing
+                    handleTextContent(validationResult.textContent, validationResult.mimeType)
                 } else {
+                    Log.w(TAG, "Valid intent but no content found")
                     viewModel.handleShareIntent(null)
                 }
             }
             else -> {
+                Log.d(TAG, "Ignoring unsupported intent action: ${intent?.action}")
                 viewModel.handleShareIntent(null)
             }
         }
+    }
+
+    private fun handleTextContent(text: String, mimeType: String?) {
+        // For text/plain or other text-based MIME types, check if content looks like CSV
+        if (MimeTypeValidator.getCsvConfidenceLevel(mimeType) == MimeTypeValidator.CsvConfidence.MEDIUM ||
+            MimeTypeValidator.getCsvConfidenceLevel(mimeType) == MimeTypeValidator.CsvConfidence.LOW) {
+
+            if (MimeTypeValidator.appearsToBeCsv(text)) {
+                Log.d(TAG, "Text content appears to be CSV, processing as CSV")
+                viewModel.handleTextShare(text)
+            } else {
+                Log.w(TAG, "Text content does not appear to be CSV")
+                showUnsupportedFileTypeError(mimeType, "Content does not appear to be CSV data")
+            }
+        } else {
+            // High confidence MIME types - process directly
+            viewModel.handleTextShare(text)
+        }
+    }
+
+    private fun showUnsupportedFileTypeError(mimeType: String?, errorMessage: String) {
+        val description = MimeTypeValidator.getMimeTypeDescription(mimeType)
+        val fullMessage = "Unsupported file type: $description\n\n$errorMessage\n\nPlease share a CSV file exported from Tefal Goodvibes app."
+
+        AlertDialog.Builder(this)
+            .setTitle("Unsupported File Type")
+            .setMessage(fullMessage)
+            .setPositiveButton("OK", null)
+            .show()
     }
     
     private fun checkAndRequestPermissions(): Boolean {
