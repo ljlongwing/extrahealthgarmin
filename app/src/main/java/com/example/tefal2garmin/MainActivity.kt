@@ -100,6 +100,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         tryAgainButton.setOnClickListener {
+            Log.d(TAG, "Try Again button clicked. Resetting to initial state.")
             resetToInitialState()
         }
         
@@ -253,12 +254,12 @@ class MainActivity : AppCompatActivity() {
         generatedRecords = recordsGenerated
         
         welcomeText.visibility = android.view.View.INVISIBLE
-        instructionsText.text = "Conversion completed successfully!"
-        statusText.text = "Processed $recordsProcessed records, generated $recordsGenerated Garmin records"
+        instructionsText.text = getString(R.string.success_file_processed)
+        statusText.text = String.format(getString(R.string.success_records_summary), recordsProcessed, recordsGenerated)
         statusText.visibility = android.view.View.VISIBLE
         progressBar.visibility = android.view.View.INVISIBLE
         resultText.visibility = android.view.View.VISIBLE
-        resultText.text = "File saved - click button below to save"
+        resultText.text = getString(R.string.success_ready_to_save)
         openGarminButton.visibility = android.view.View.VISIBLE
         tryAgainButton.visibility = android.view.View.VISIBLE
     }
@@ -266,6 +267,8 @@ class MainActivity : AppCompatActivity() {
     private fun showErrorState(message: String) {
         currentState = UiState.ERROR
         errorMessage = message
+        
+        Log.e(TAG, "Error occurred: $message")
         
         welcomeText.visibility = android.view.View.INVISIBLE
         instructionsText.text = "Error occurred"
@@ -276,6 +279,9 @@ class MainActivity : AppCompatActivity() {
         resultText.text = "Please try again"
         openGarminButton.visibility = android.view.View.INVISIBLE
         tryAgainButton.visibility = android.view.View.VISIBLE
+        
+        // Log specific error for debugging
+        Log.w(TAG, "Error state activated. Message: $message, Previous state: $currentState")
     }
     
     private fun resetToInitialState() {
@@ -313,12 +319,14 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openInputStream(uri)?.use { inputStream ->
                     // Validate file encoding
                     runOnUiThread {
-                        statusText.text = "Validating file encoding..."
+                        statusText.text = getString(R.string.status_validating_encoding)
                     }
                     val encodingResult = csvValidator.validateEncoding(inputStream)
                     if (!encodingResult.isValid) {
                         runOnUiThread {
-                            showErrorState(encodingResult.errorMessage ?: "Invalid file encoding")
+                            val errorMsg = encodingResult.errorMessage ?: getString(R.string.error_invalid_encoding)
+                            Log.e(TAG, "Encoding validation failed: $errorMsg")
+                            showErrorState(errorMsg)
                         }
                         return@Thread
                     }
@@ -328,37 +336,42 @@ class MainActivity : AppCompatActivity() {
                     
                     // Read CSV data
                     runOnUiThread {
-                        statusText.text = "Reading CSV data..."
+                        statusText.text = getString(R.string.status_reading_csv)
                     }
                     val lines = csvReader.readCsvFile(uri)
                     if (lines.isEmpty()) {
                         runOnUiThread {
-                            showErrorState("The CSV file is empty")
+                            Log.e(TAG, "CSV file is empty")
+                            showErrorState(getString(R.string.error_empty_file))
                         }
                         return@Thread
                     }
                     
                     // Validate delimiter
                     runOnUiThread {
-                        statusText.text = "Validating CSV format..."
+                        statusText.text = getString(R.string.status_validating_format)
                     }
                     val delimiterResult = csvValidator.validateDelimiter(lines)
                     if (!delimiterResult.isValid) {
                         runOnUiThread {
-                            showErrorState(delimiterResult.errorMessage ?: "Invalid delimiter")
+                            val errorMsg = delimiterResult.errorMessage ?: getString(R.string.error_invalid_delimiter)
+                            Log.e(TAG, "Delimiter validation failed: $errorMsg")
+                            showErrorState(errorMsg)
                         }
                         return@Thread
                     }
                     
                     // Validate headers
                     runOnUiThread {
-                        statusText.text = "Validating headers..."
+                        statusText.text = getString(R.string.status_validating_headers)
                     }
                     val headerLine = lines[0]
                     val headerResult = csvValidator.validateHeaders(headerLine)
                     if (!headerResult.isValid) {
                         runOnUiThread {
-                            showErrorState(headerResult.errorMessage ?: "Invalid headers")
+                            val errorMsg = headerResult.errorMessage ?: getString(R.string.error_invalid_headers)
+                            Log.e(TAG, "Headers validation failed: $errorMsg")
+                            showErrorState(errorMsg)
                         }
                         return@Thread
                     }
@@ -373,8 +386,7 @@ class MainActivity : AppCompatActivity() {
                     val headers = parsedData.firstOrNull() ?: emptyList()
                     
                     runOnUiThread {
-                        showProcessingState(inputFileName)
-                        statusText.text = "Reading CSV file..."
+                        statusText.text = getString(R.string.status_processing_records)
                     }
                     
                     val processedDataList = parsedData.drop(1).mapIndexed { index, row ->
@@ -394,7 +406,7 @@ class MainActivity : AppCompatActivity() {
                     val outputFileName = generateOutputFileName()
                     
                     runOnUiThread {
-                        statusText.text = "Generating Garmin CSV..."
+                        statusText.text = getString(R.string.status_generating_csv)
                     }
                     
                     // Generate output file

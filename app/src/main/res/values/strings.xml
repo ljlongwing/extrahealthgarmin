@@ -1,4 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Tefal2Garmin Sync</string>
+    
+    <!-- Error Messages -->
+    <string name="error_empty_file">The CSV file is empty. Please select a file that contains weight measurement data.</string>
+    <string name="error_invalid_encoding">The file has invalid encoding. Please ensure the CSV file is saved in UTF-8 format.</string>
+    <string name="error_invalid_delimiter">The CSV file uses an unsupported delimiter. Please ensure the file uses commas (,) as separators.</string>
+    <string name="error_invalid_headers">The CSV file is missing required headers. Please ensure the file contains columns for date, weight, and other measurement data.</string>
+    <string name="error_file_read_failed">Failed to read the file. Please check if the file is accessible and not corrupted.</string>
+    <string name="error_processing_failed">An error occurred while processing the file. Please try again or contact support if the issue persists.</string>
+    <string name="error_conversion_failed">Failed to convert data to Garmin format. Please check your data format and try again.</string>
+    <string name="error_file_save_failed">Failed to save the output file. Please check available storage space and permissions.</string>
+    
+    <!-- Success Messages -->
+    <string name="success_file_processed">Conversion completed successfully!</string>
+    <string name="success_records_summary">Successfully processed %1$d records and generated %2$d Garmin records</string>
+    <string name="success_ready_to_save">File ready to save to device</string>
+    
+    <!-- UI Labels -->
+    <string name="label_try_again">Try Again</string>
+    <string name="label_open_garmin">Open Garmin Connect</string>
+    
+    <!-- Processing Status Messages -->
+    <string name="status_validating_encoding">Validating file encoding...</string>
+    <string name="status_reading_csv">Reading CSV data...</string>
+    <string name="status_validating_format">Validating CSV format...</string>
+    <string name="status_validating_headers">Validating headers...</string>
+    <string name="status_processing_records">Processing records...</string>
+    <string name="status_generating_csv">Generating Garmin CSV...</string>
 </resources>
