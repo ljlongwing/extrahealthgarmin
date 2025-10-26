@@ -441,8 +441,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun openGarminConnect() {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GARMIN_CONNECT_URL))
-        startActivity(intent)
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GARMIN_CONNECT_URL))
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open Garmin Connect: ${e.message}", e)
+            runOnUiThread {
+                showErrorState("Failed to open Garmin Connect. Please check if you have a browser installed.")
+            }
+        }
     }
     
     private fun getFileName(uri: Uri): String {
