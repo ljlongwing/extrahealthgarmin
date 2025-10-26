@@ -813,8 +813,8 @@
              "dependencies": [
                2
              ],
-             "details": "Prepare test cases with files labeled as each supported MIME type. Share files from multiple sources (e.g., Android, iOS, desktop) and confirm the app receives and processes them correctly. Document any edge cases or failures for further refinement.",
-             "status": "in-progress",
+            "details": "Prepare test cases with files labeled as each supported MIME type. Share files from multiple sources (e.g., Android, iOS, desktop) and confirm the app receives and processes them correctly. Document any edge cases or failures for further refinement.",
+            "status": "done",
              "testStrategy": "Perform manual and automated tests sharing CSV files with different MIME types; verify successful import and correct data parsing for each scenario."
            }
         ]
