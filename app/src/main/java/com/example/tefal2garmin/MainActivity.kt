@@ -1,33 +1,31 @@
 package com.example.tefal2garmin
 
-import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import android.widget.TextView
-import android.widget.ProgressBar
-import android.widget.Button
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import androidx.annotation.RequiresApi
-import android.util.Log
+import android.os.Bundle
 import android.provider.OpenableColumns
-import android.Manifest
-import android.content.pm.PackageManager
+import android.util.Log
+import android.view.View
+import android.widget.Button
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.documentfile.provider.DocumentFile
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.ActivityResult
-import com.example.tefal2garmin.utils.CsvReader
-import com.example.tefal2garmin.utils.CsvValidator
-import com.example.tefal2garmin.utils.MultilineCsvDetector
-import com.example.tefal2garmin.utils.RecordProcessor
-import com.example.tefal2garmin.utils.GarminCsvGenerator
-import java.io.*
-import java.text.SimpleDateFormat
-import java.util.*
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Observer
+import com.example.tefal2garmin.data.FileInfo
+import com.example.tefal2garmin.data.CsvProcessingResult
+import com.example.tefal2garmin.ui.MainUiState
+import com.example.tefal2garmin.ui.MainViewModel
+import com.example.tefal2garmin.ui.MainViewModelFactory
+import java.text.DecimalFormat
 
 class MainActivity : AppCompatActivity() {
     
@@ -40,24 +38,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var openGarminButton: Button
     private lateinit var tryAgainButton: Button
     
-    // Processing components
-    private lateinit var csvReader: CsvReader
-    private lateinit var csvValidator: CsvValidator
-    private lateinit var multilineDetector: MultilineCsvDetector
-    private lateinit var recordProcessor: RecordProcessor
-    private lateinit var garminCsvGenerator: GarminCsvGenerator
-    
-    // State
-    private enum class UiState {
-        INITIAL, PROCESSING, SUCCESS, ERROR
+    // ViewModel
+    private val viewModel: MainViewModel by viewModels {
+        MainViewModelFactory(application)
     }
-    
-    private var currentState = UiState.INITIAL
-    private var sharedFileUri: Uri? = null
-    private var processedRecords = 0
-    private var generatedRecords = 0
-    private var errorMessage: String? = null
-    private var outputUri: Uri? = null
     
     // SAF launcher for Downloads folder
     private lateinit var saveFileLauncher: ActivityResultLauncher<String>
@@ -65,7 +49,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val STORAGE_PERMISSION_REQUEST_CODE = 1001
-        private const val GARMIN_CONNECT_URL = "https://connect.garmin.com/modern/import-data"
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,8 +56,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         
         initializeViews()
-        initializeProcessingComponents()
         initializeSaveFileLauncher()
+        observeViewModel()
         
         // Handle share intent
         handleIntent(intent)
@@ -83,6 +66,44 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+    
+    private fun observeViewModel() {
+        viewModel.uiState.observe(this, Observer { state ->
+            updateUI(state)
+        })
+    }
+    
+    private fun updateUI(state: MainUiState) {
+        when {
+            state.showInitial -> {
+                showInitialState()
+            }
+            state.isLoading -> {
+                showProcessingState()
+            }
+            state.showSuccess -> {
+                state.processingResult?.let { result ->
+                    showSuccessState(result.recordsProcessed, result.recordsGenerated)
+                }
+            }
+            state.showError -> {
+                state.error?.let { error ->
+                    showErrorState(error)
+                }
+            }
+        }
+        
+        // Update status message
+        if (state.statusMessage.isNotEmpty()) {
+            statusText.text = state.statusMessage
+        }
+        
+        // Update file info if available
+        state.fileInfo?.let { fileInfo ->
+            welcomeText.text = "File received: ${fileInfo.fileName}"
+            statusText.text = "Size: ${formatFileSize(fileInfo.fileSize)} | Starting validation..."
+        }
     }
     
     private fun initializeViews() {
@@ -100,33 +121,25 @@ class MainActivity : AppCompatActivity() {
         }
         
         tryAgainButton.setOnClickListener {
-            Log.d(TAG, "Try Again button clicked. Resetting to initial state.")
-            resetToInitialState()
+            viewModel.resetToInitialState()
         }
         
         resultText.setOnClickListener {
-            if (currentState == UiState.SUCCESS) {
-                // Open file picker to save to Downloads
-                saveFileLauncher.launch(null)
+            viewModel.uiState.value?.let { state ->
+                if (state.showSuccess) {
+                    // Open file picker to save to Downloads
+                    saveFileLauncher.launch(null)
+                }
             }
         }
-    }
-    
-    private fun initializeProcessingComponents() {
-        csvReader = CsvReader(contentResolver)
-        csvValidator = CsvValidator()
-        multilineDetector = MultilineCsvDetector()
-        recordProcessor = RecordProcessor()
-        garminCsvGenerator = GarminCsvGenerator()
     }
     
     private fun initializeSaveFileLauncher() {
         saveFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
             if (uri != null) {
-                outputUri = uri
-                Log.d(TAG, "Output file saved to: ${outputUri?.toString()}")
+                Log.d(TAG, "Output file saved to: ${uri.toString()}")
                 runOnUiThread {
-                    resultText.text = "File saved to: ${outputUri?.lastPathSegment ?: "unknown"}"
+                    resultText.text = "File saved to: ${uri.lastPathSegment ?: "unknown"}"
                 }
             } else {
                 Log.w(TAG, "User cancelled file save")
@@ -143,21 +156,16 @@ class MainActivity : AppCompatActivity() {
                 if (sharedUri != null) {
                     // Check permissions before processing
                     if (checkAndRequestPermissions()) {
-                        // Store URI for later processing
-                        sharedFileUri = sharedUri
-                        showFileInfo(sharedUri)
-                        
-                        // Start processing and validating file
-                        processReceivedFile(sharedUri)
+                        viewModel.handleShareIntent(sharedUri)
                     }
                 } else if (sharedText != null) {
-                    showTextSharedContent(sharedText)
+                    viewModel.handleTextShare(sharedText)
                 } else {
-                    showInitialState()
+                    viewModel.handleShareIntent(null)
                 }
             }
             else -> {
-                showInitialState()
+                viewModel.handleShareIntent(null)
             }
         }
     }
@@ -194,298 +202,72 @@ class MainActivity : AppCompatActivity() {
         when (requestCode) {
             STORAGE_PERMISSION_REQUEST_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Permission granted, process file if we have a URI
-                    sharedFileUri?.let { uri ->
-                        processReceivedFile(uri)
-                    }
+                    // Permission granted, process the intent again
+                    handleIntent(intent)
                 } else {
                     // Permission denied
-                    showErrorState("Storage permission is required to read CSV files")
+                    viewModel.handleShareIntent(null) // Will show initial state
                 }
             }
         }
     }
     
     private fun showInitialState() {
-        currentState = UiState.INITIAL
-        welcomeText.visibility = android.view.View.VISIBLE
-        instructionsText.visibility = android.view.View.VISIBLE
-        progressBar.visibility = android.view.View.INVISIBLE
-        statusText.visibility = android.view.View.INVISIBLE
-        resultText.visibility = android.view.View.INVISIBLE
-        openGarminButton.visibility = android.view.View.INVISIBLE
-        tryAgainButton.visibility = android.view.View.INVISIBLE
+        welcomeText.visibility = View.VISIBLE
+        welcomeText.text = "Welcome to Tefal2Garmin Sync"
+        instructionsText.visibility = View.VISIBLE
+        instructionsText.text = "Share a CSV file from Tefal Goodvibes app to convert it for Garmin Connect import"
+        progressBar.visibility = View.INVISIBLE
+        statusText.visibility = View.INVISIBLE
+        resultText.visibility = View.INVISIBLE
+        openGarminButton.visibility = View.INVISIBLE
+        tryAgainButton.visibility = View.INVISIBLE
     }
     
-    private fun showFileInfo(uri: Uri) {
-        val fileName = getFileName(uri)
-        val fileSize = getFileSize(uri)
-        
-        welcomeText.text = "File received: $fileName"
-        instructionsText.text = "Preparing to process..."
-        statusText.text = "Size: ${formatFileSize(fileSize)} | Starting validation..."
-        statusText.visibility = android.view.View.VISIBLE
-    }
-    
-    private fun showTextSharedContent(text: String) {
-        currentState = UiState.PROCESSING
-        welcomeText.text = "CSV content shared (${text.length} chars)"
-        instructionsText.text = "Processing text content..."
-        statusText.text = "Parsing text data..."
-        statusText.visibility = android.view.View.VISIBLE
-        progressBar.visibility = android.view.View.VISIBLE
-    }
-    
-    private fun showProcessingState(fileName: String? = null) {
-        currentState = UiState.PROCESSING
-        welcomeText.visibility = android.view.View.INVISIBLE
-        instructionsText.text = if (fileName != null) "Processing $fileName..." else "Processing file..."
-        statusText.text = "Initializing..."
-        statusText.visibility = android.view.View.VISIBLE
-        progressBar.visibility = android.view.View.VISIBLE
-        resultText.visibility = android.view.View.INVISIBLE
-        openGarminButton.visibility = android.view.View.INVISIBLE
-        tryAgainButton.visibility = android.view.View.INVISIBLE
+    private fun showProcessingState() {
+        welcomeText.visibility = View.INVISIBLE
+        instructionsText.text = "Processing file..."
+        statusText.visibility = View.VISIBLE
+        progressBar.visibility = View.VISIBLE
+        resultText.visibility = View.INVISIBLE
+        openGarminButton.visibility = View.INVISIBLE
+        tryAgainButton.visibility = View.INVISIBLE
     }
     
     private fun showSuccessState(recordsProcessed: Int, recordsGenerated: Int) {
-        currentState = UiState.SUCCESS
-        processedRecords = recordsProcessed
-        generatedRecords = recordsGenerated
-        
-        welcomeText.visibility = android.view.View.INVISIBLE
+        welcomeText.visibility = View.INVISIBLE
         instructionsText.text = getString(R.string.success_file_processed)
         statusText.text = String.format(getString(R.string.success_records_summary), recordsProcessed, recordsGenerated)
-        statusText.visibility = android.view.View.VISIBLE
-        progressBar.visibility = android.view.View.INVISIBLE
-        resultText.visibility = android.view.View.VISIBLE
+        statusText.visibility = View.VISIBLE
+        progressBar.visibility = View.INVISIBLE
+        resultText.visibility = View.VISIBLE
         resultText.text = getString(R.string.success_ready_to_save)
-        openGarminButton.visibility = android.view.View.VISIBLE
-        tryAgainButton.visibility = android.view.View.VISIBLE
+        openGarminButton.visibility = View.VISIBLE
+        tryAgainButton.visibility = View.VISIBLE
     }
     
     private fun showErrorState(message: String) {
-        currentState = UiState.ERROR
-        errorMessage = message
-        
         Log.e(TAG, "Error occurred: $message")
         
-        welcomeText.visibility = android.view.View.INVISIBLE
+        welcomeText.visibility = View.INVISIBLE
         instructionsText.text = "Error occurred"
         statusText.text = message
-        statusText.visibility = android.view.View.VISIBLE
-        progressBar.visibility = android.view.View.INVISIBLE
-        resultText.visibility = android.view.View.VISIBLE
+        statusText.visibility = View.VISIBLE
+        progressBar.visibility = View.INVISIBLE
+        resultText.visibility = View.VISIBLE
         resultText.text = "Please try again"
-        openGarminButton.visibility = android.view.View.INVISIBLE
-        tryAgainButton.visibility = android.view.View.VISIBLE
-        
-        // Log specific error for debugging
-        Log.w(TAG, "Error state activated. Message: $message, Previous state: $currentState")
-    }
-    
-    private fun resetToInitialState() {
-        currentState = UiState.INITIAL
-        errorMessage = null
-        sharedFileUri = null
-        processedRecords = 0
-        generatedRecords = 0
-        
-        welcomeText.text = "Welcome to Tefal2Garmin Sync"
-        instructionsText.text = "Share a CSV file from the Tefal Goodvibes app to convert it for Garmin Connect import"
-        statusText.visibility = android.view.View.INVISIBLE
-        progressBar.visibility = android.view.View.INVISIBLE
-        resultText.visibility = android.view.View.INVISIBLE
-        openGarminButton.visibility = android.view.View.INVISIBLE
-        tryAgainButton.visibility = android.view.View.INVISIBLE
-        
-        welcomeText.visibility = android.view.View.VISIBLE
-        instructionsText.visibility = android.view.View.VISIBLE
-    }
-    
-    private fun processReceivedFile(uri: Uri) {
-        showFileInfo(uri)
-        
-        // Start processing in background to avoid blocking UI thread
-        Thread {
-            try {
-                val fileName = getFileName(uri)
-                val fileSize = getFileSize(uri)
-                
-                Log.d(TAG, "Starting to process received file: $uri")
-                Log.d(TAG, "File name: $fileName, size: $fileSize bytes")
-                
-                // Open input stream and validate encoding
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    // Validate file encoding
-                    runOnUiThread {
-                        statusText.text = getString(R.string.status_validating_encoding)
-                    }
-                    val encodingResult = csvValidator.validateEncoding(inputStream)
-                    if (!encodingResult.isValid) {
-                        runOnUiThread {
-                            val errorMsg = encodingResult.errorMessage ?: getString(R.string.error_invalid_encoding)
-                            Log.e(TAG, "Encoding validation failed: $errorMsg")
-                            showErrorState(errorMsg)
-                        }
-                        return@Thread
-                    }
-                    
-                    // Reset stream to read from beginning
-                    inputStream.reset()
-                    
-                    // Read CSV data
-                    runOnUiThread {
-                        statusText.text = getString(R.string.status_reading_csv)
-                    }
-                    val lines = csvReader.readCsvFile(uri)
-                    if (lines.isEmpty()) {
-                        runOnUiThread {
-                            Log.e(TAG, "CSV file is empty")
-                            showErrorState(getString(R.string.error_empty_file))
-                        }
-                        return@Thread
-                    }
-                    
-                    // Validate delimiter
-                    runOnUiThread {
-                        statusText.text = getString(R.string.status_validating_format)
-                    }
-                    val delimiterResult = csvValidator.validateDelimiter(lines)
-                    if (!delimiterResult.isValid) {
-                        runOnUiThread {
-                            val errorMsg = delimiterResult.errorMessage ?: getString(R.string.error_invalid_delimiter)
-                            Log.e(TAG, "Delimiter validation failed: $errorMsg")
-                            showErrorState(errorMsg)
-                        }
-                        return@Thread
-                    }
-                    
-                    // Validate headers
-                    runOnUiThread {
-                        statusText.text = getString(R.string.status_validating_headers)
-                    }
-                    val headerLine = lines[0]
-                    val headerResult = csvValidator.validateHeaders(headerLine)
-                    if (!headerResult.isValid) {
-                        runOnUiThread {
-                            val errorMsg = headerResult.errorMessage ?: getString(R.string.error_invalid_headers)
-                            Log.e(TAG, "Headers validation failed: $errorMsg")
-                            showErrorState(errorMsg)
-                        }
-                        return@Thread
-                    }
-                    
-                    runOnUiThread {
-                        showProcessingState("Processing ${lines.size} lines...")
-                    }
-                    
-                    // Process records and convert to Garmin format
-                    val inputFileName = getFileName(uri)
-                    val parsedData = csvReader.parseCsvLines(lines)
-                    val headers = parsedData.firstOrNull() ?: emptyList()
-                    
-                    runOnUiThread {
-                        statusText.text = getString(R.string.status_processing_records)
-                    }
-                    
-                    val processedDataList = parsedData.drop(1).mapIndexed { index, row ->
-                        val recordMap = headers.zip(row).toMap()
-                        val result = RecordProcessor.processRecord(recordMap, csvValidator)
-                        
-                        // Update progress
-                        runOnUiThread {
-                            statusText.text = "Processing record ${index + 1}/${parsedData.size - 1}"
-                        }
-                        
-                        result
-                    }
-                    val processedData = processedDataList.mapNotNull { result ->
-                        if (result.success) result.record else null
-                    }
-                    val outputFileName = generateOutputFileName()
-                    
-                    runOnUiThread {
-                        statusText.text = getString(R.string.status_generating_csv)
-                    }
-                    
-                    // Generate output file
-                    val result = GarminCsvGenerator.generateGarminCsv(processedData, outputFileName) { current, total ->
-                        runOnUiThread {
-                            statusText.text = "Generating file... $current/$total"
-                        }
-                    }
-                    
-                    runOnUiThread {
-                        if (result.success) {
-                            showSuccessState(parsedData.size, result.recordsGenerated)
-                        } else {
-                            showErrorState(result.error ?: "Unknown error occurred")
-                        }
-                    }
-                }
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing file", e)
-                runOnUiThread {
-                    showErrorState("Error processing file: ${e.message}")
-                }
-            }
-        }.start()
-    }
-    
-    private fun generateOutputFileName(): File {
-        val timestamp = SimpleDateFormat("yyyy-MM-dd-HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "garmin-import-$timestamp.csv"
-        return File(getExternalFilesDir(null), fileName)
+        openGarminButton.visibility = View.INVISIBLE
+        tryAgainButton.visibility = View.VISIBLE
     }
     
     private fun openGarminConnect() {
         try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GARMIN_CONNECT_URL))
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(viewModel.getGarminConnectUrl()))
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open Garmin Connect: ${e.message}", e)
-            runOnUiThread {
-                showErrorState("Failed to open Garmin Connect. Please check if you have a browser installed.")
-            }
+            Toast.makeText(this, "Failed to open Garmin Connect. Please check if you have a browser installed.", Toast.LENGTH_LONG).show()
         }
-    }
-    
-    private fun getFileName(uri: Uri): String {
-        var fileName = uri.lastPathSegment ?: "unknown_file.csv"
-        
-        try {
-            @Suppress("DEPRECATION")
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0 && cursor.moveToFirst()) {
-                    fileName = cursor.getString(nameIndex)
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not retrieve file name from ContentResolver", e)
-        }
-        
-        return fileName
-    }
-    
-    private fun getFileSize(uri: Uri): Long {
-        var size = 0L
-        
-        try {
-            @Suppress("DEPRECATION")
-            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                if (sizeIndex >= 0 && cursor.moveToFirst()) {
-                    size = cursor.getLong(sizeIndex)
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not retrieve file size from ContentResolver", e)
-        }
-        
-        return size
     }
     
     private fun formatFileSize(bytes: Long): String {

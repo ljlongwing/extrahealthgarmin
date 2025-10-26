@@ -1303,11 +1303,141 @@
             "testStrategy": "Check that all feedback and issues are accounted for in the report. Validate that recommendations are actionable and aligned with test findings."
           }
         ]
+      },
+      {
+        "id": 31,
+        "title": "Refactor MainActivity to MVVM Architecture",
+        "description": "Restructure MainActivity to follow modern Android MVVM architecture by extracting business logic to ViewModels, using use cases for CSV processing, implementing repository pattern for file operations, and improving testability.",
+        "details": "This task focuses on refactoring the MainActivity to adhere to the MVVM architecture pattern. The current implementation violates the Single Responsibility Principle by handling UI, CSV processing, file operations, and state management within a single class. The refactoring will involve several steps:\n\n1. **Create ViewModel Architecture**: Define a new ViewModel class that handles UI-related data and business logic.\n2. **Extract CSV Processing Logic to Use Cases**: Move CSV parsing, normalization, and data extraction to dedicated use cases within a use case layer.\n3. **Implement Repository Layer**: Create a repository class to manage file operations and data access, ensuring separation of concerns.\n4. **Refactor MainActivity**: Transform MainActivity into a UI coordinator that only handles user interactions and delegates business logic to ViewModels and use cases.\n5. **Add Dependency Injection**: Introduce Dagger Hilt or another DI framework to manage dependencies between components, improving testability.\n6. **Update Tests**: Write unit tests for ViewModels and use cases, and update existing UI tests to reflect the new architecture.\n\nImplementation Details:\n- Use Jetpack Compose for the UI to align with modern Android development practices.\n- Leverage Room for local data persistence if needed.\n- Ensure proper handling of state using Android Architecture Components.\n- Follow SOLID principles to maintain a clean and modular codebase.\n- Use data classes for immutable data transfer objects.\n- Implement proper error handling and logging throughout the components.\n\nCode Structure:\n- MainActivity.kt: Only contains UI-related code and delegates to ViewModel.\n- MainViewModel.kt: Handles business logic and state management.\n- UseCases package: Contains individual use cases for CSV processing, file operations, etc.\n- Repository package: Manages data sources and business logic.\n- Data classes for CSV records and normalized data.\n\nSecurity Considerations:\n- Ensure sensitive operations are handled by the repository and not exposed to the UI.\n- Use secure storage for any credentials or sensitive data (refer to Task 25 for credential storage).\n\nPerformance Considerations:\n- Use ViewModel to manage UI state and lifecycle-aware components.\n- Optimize CSV processing by using coroutines or background threads to avoid blocking the main thread.\n- Implement lazy loading and efficient data handling for large CSV files.\n\nTesting Strategy:\n- Write unit tests for ViewModels and use cases using JUnit and Mockito.\n- Use Espresso for UI testing to verify the UI interactions.\n- Ensure proper mocking of dependencies (e.g., repository, file operations) in unit tests.\n- Validate the CSV processing and normalization logic with test cases.",
+        "testStrategy": "To verify the successful implementation of this task, follow these specific steps:\n\n1. **Verify Architecture Structure**: Check that the codebase now follows the MVVM architecture with clear separation between UI, ViewModel, UseCases, and Repository layers. Ensure that MainActivity only contains UI-related code.\n2. **Test ViewModel Functionality**: Write and run unit tests for the new ViewModel. Verify that it correctly handles data transformation, state management, and communication with the repository. Test edge cases such as empty CSV files, malformed data, and large datasets.\n3. **Test Use Cases**: Write unit tests for each use case. Ensure that CSV parsing, normalization, and data extraction functions work as expected. Validate error handling and edge cases.\n4. **Test Repository Layer**: Verify that the repository correctly handles file operations, data access, and state persistence. Test scenarios including successful file reads, error handling during file operations, and data consistency.\n5. **Test UI Interactions**: Use Espresso to test the MainActivity. Verify that user interactions properly trigger ViewModel operations, display correct UI states, and handle errors gracefully.\n6. **Test Dependency Injection**: Validate that Dagger Hilt properly injects dependencies into the ViewModel and other components. Check that components can be mocked during testing.\n7. **Check Performance and Security**: Measure the performance of CSV processing and ensure it runs efficiently on the background thread. Verify that sensitive operations are properly encapsulated and that data is handled securely.\n8. **Regression Testing**: Ensure that existing functionality from previous tasks (e.g., CSV processing, file sharing) still works correctly after the refactoring.",
+        "status": "done",
+        "dependencies": [
+          1,
+          6,
+          9,
+          11,
+          24,
+          25,
+          26
+        ],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create MainViewModel",
+            "description": "Define a ViewModel class that handles UI-related data and business logic for the MainActivity.",
+            "dependencies": [],
+            "details": "Implement a ViewModel using Android Architecture Components that encapsulates the business logic for the MainActivity. This ViewModel should manage the state, handle user interactions, and delegate to use cases for CSV processing.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 2,
+            "title": "Extract CSV Processing to Use Cases",
+            "description": "Move CSV parsing, normalization, and data extraction to dedicated use cases within a use case layer.",
+            "dependencies": [],
+            "details": "Create use cases for CSV processing tasks such as parsing the CSV file, normalizing data fields, and extracting relevant data. These use cases should be placed in a separate package to maintain separation of concerns.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 3,
+            "title": "Implement Repository Layer",
+            "description": "Create a repository class to manage file operations and data access, ensuring separation of concerns.",
+            "dependencies": [],
+            "details": "Design and implement a repository that handles file operations and data access. This repository should abstract the file I/O and provide a clean interface for the ViewModel to interact with the CSV data.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 4,
+            "title": "Refactor MainActivity",
+            "description": "Transform MainActivity into a UI coordinator that only handles user interactions and delegates business logic to ViewModels and use cases.",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "Restructure the MainActivity to only contain UI-related code and interactions. Remove all business logic from this class and delegate tasks to the ViewModel and use cases. Use Jetpack Compose for the UI to align with modern practices.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 5,
+            "title": "Add Dependency Injection",
+            "description": "Introduce Dagger Hilt or another DI framework to manage dependencies between components, improving testability.",
+            "dependencies": [
+              1,
+              2,
+              3
+            ],
+            "details": "Set up dependency injection using Dagger Hilt to manage the dependencies between the ViewModel, use cases, and repository. This will improve testability by allowing components to be easily mocked and replaced during testing.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 6,
+            "title": "Update Tests",
+            "description": "Write unit tests for ViewModels and use cases, and update existing UI tests to reflect the new architecture.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "details": "Develop unit tests for the ViewModels and use cases using JUnit and Mockito. Update the UI tests to verify that the MainActivity correctly interacts with the ViewModel and handles user interactions properly.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 7,
+            "title": "Ensure SOLID Principles",
+            "description": "Follow SOLID principles to maintain a clean and modular codebase.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "details": "Ensure that the refactored code adheres to the SOLID principles by designing classes and interfaces with single responsibility, proper inheritance, composition over inheritance, and maintaining open/closed principle. Use data classes for immutable data transfer objects.",
+            "status": "done",
+            "testStrategy": null
+          },
+          {
+            "id": 8,
+            "title": "Analyze existing code for migration",
+            "description": "Analyze existing MainActivity code and identify business logic to extract without duplication",
+            "details": "Before refactoring, analyze the current MainActivity implementation to:\n1. Identify all business logic that needs to be moved to ViewModel\n2. Catalog existing CSV processing utilities that should be reused (not duplicated)\n3. Map current dependencies and imports that will be affected\n4. Identify test cases that must continue working\n5. Create a migration plan that preserves existing functionality\nFocus on ensuring no code duplication and maintaining test compatibility.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 31
+          },
+          {
+            "id": 9,
+            "title": "Refactor with test preservation",
+            "description": "Refactor MainActivity using existing utilities while preserving all test functionality",
+            "details": "Execute the MVVM refactoring with these constraints:\n1. Reuse existing CSV processing classes without modification/duplication\n2. Ensure all existing unit tests continue to pass without changes\n3. Move only UI event handling and state management to ViewModel\n4. Keep CSV processing logic in existing utility classes\n5. Use composition instead of inheritance where possible\n6. Implement dependency injection for better testability\n7. Create adapter/wrapper classes if needed to bridge new architecture with existing utilities\nThe goal is architectural improvement without breaking existing functionality and tests.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 31
+          },
+          {
+            "id": 10,
+            "title": "Validate test compatibility",
+            "description": "Run all existing tests to ensure they still pass after refactoring",
+            "details": "After completing the MVVM refactoring:\n1. Run the complete existing test suite to verify all tests pass\n2. Fix any test failures without changing the test logic itself\n3. Ensure test coverage remains the same or improves\n4. Verify that both unit tests and integration tests work\n5. Run UI tests to confirm MainActivity functionality is preserved\n6. Check that no regressions were introduced during refactoring\n7. Document any test modifications required (should be minimal)\nThis subtask focuses on validation that the refactoring maintained backward compatibility.",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 31
+          }
+        ]
       }
     ],
     "metadata": {
       "created": "2025-10-24T09:09:09.436Z",
-      "updated": "2025-10-26T16:53:47.189Z",
+      "updated": "2025-10-26T18:17:04.665Z",
       "description": "Tasks for master context"
     }
   }
