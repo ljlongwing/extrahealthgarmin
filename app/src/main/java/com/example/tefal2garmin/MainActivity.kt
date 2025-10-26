@@ -219,28 +219,27 @@ class MainActivity : AppCompatActivity() {
     private fun showFileInfo(uri: Uri) {
         val fileName = getFileName(uri)
         val fileSize = getFileSize(uri)
-        val message = "Received: $fileName"
         
-        welcomeText.text = message
-        instructionsText.text = "Validating and processing..."
-        statusText.text = "Size: ${formatFileSize(fileSize)}"
+        welcomeText.text = "File received: $fileName"
+        instructionsText.text = "Preparing to process..."
+        statusText.text = "Size: ${formatFileSize(fileSize)} | Starting validation..."
         statusText.visibility = android.view.View.VISIBLE
     }
     
     private fun showTextSharedContent(text: String) {
         currentState = UiState.PROCESSING
-        welcomeText.text = "CSV content shared"
+        welcomeText.text = "CSV content shared (${text.length} chars)"
         instructionsText.text = "Processing text content..."
-        statusText.text = "Length: ${text.length} characters"
+        statusText.text = "Parsing text data..."
         statusText.visibility = android.view.View.VISIBLE
         progressBar.visibility = android.view.View.VISIBLE
     }
     
-    private fun showProcessingState(message: String) {
+    private fun showProcessingState(fileName: String? = null) {
         currentState = UiState.PROCESSING
         welcomeText.visibility = android.view.View.INVISIBLE
-        instructionsText.text = message
-        statusText.text = "Processing..."
+        instructionsText.text = if (fileName != null) "Processing $fileName..." else "Processing file..."
+        statusText.text = "Initializing..."
         statusText.visibility = android.view.View.VISIBLE
         progressBar.visibility = android.view.View.VISIBLE
         resultText.visibility = android.view.View.INVISIBLE
@@ -299,7 +298,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun processReceivedFile(uri: Uri) {
-        showProcessingState("Processing CSV file...")
+        showFileInfo(uri)
         
         // Start processing in background to avoid blocking UI thread
         Thread {
@@ -313,6 +312,9 @@ class MainActivity : AppCompatActivity() {
                 // Open input stream and validate encoding
                 contentResolver.openInputStream(uri)?.use { inputStream ->
                     // Validate file encoding
+                    runOnUiThread {
+                        statusText.text = "Validating file encoding..."
+                    }
                     val encodingResult = csvValidator.validateEncoding(inputStream)
                     if (!encodingResult.isValid) {
                         runOnUiThread {
@@ -325,6 +327,9 @@ class MainActivity : AppCompatActivity() {
                     inputStream.reset()
                     
                     // Read CSV data
+                    runOnUiThread {
+                        statusText.text = "Reading CSV data..."
+                    }
                     val lines = csvReader.readCsvFile(uri)
                     if (lines.isEmpty()) {
                         runOnUiThread {
@@ -334,6 +339,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                     // Validate delimiter
+                    runOnUiThread {
+                        statusText.text = "Validating CSV format..."
+                    }
                     val delimiterResult = csvValidator.validateDelimiter(lines)
                     if (!delimiterResult.isValid) {
                         runOnUiThread {
@@ -343,6 +351,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                     // Validate headers
+                    runOnUiThread {
+                        statusText.text = "Validating headers..."
+                    }
                     val headerLine = lines[0]
                     val headerResult = csvValidator.validateHeaders(headerLine)
                     if (!headerResult.isValid) {
@@ -357,22 +368,39 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                     // Process records and convert to Garmin format
+                    val inputFileName = getFileName(uri)
                     val parsedData = csvReader.parseCsvLines(lines)
                     val headers = parsedData.firstOrNull() ?: emptyList()
                     
-                    val processedDataList = parsedData.drop(1).map { row ->
+                    runOnUiThread {
+                        showProcessingState(inputFileName)
+                        statusText.text = "Reading CSV file..."
+                    }
+                    
+                    val processedDataList = parsedData.drop(1).mapIndexed { index, row ->
                         val recordMap = headers.zip(row).toMap()
-                        RecordProcessor.processRecord(recordMap, csvValidator)
+                        val result = RecordProcessor.processRecord(recordMap, csvValidator)
+                        
+                        // Update progress
+                        runOnUiThread {
+                            statusText.text = "Processing record ${index + 1}/${parsedData.size - 1}"
+                        }
+                        
+                        result
                     }
                     val processedData = processedDataList.mapNotNull { result ->
                         if (result.success) result.record else null
                     }
                     val outputFileName = generateOutputFileName()
                     
+                    runOnUiThread {
+                        statusText.text = "Generating Garmin CSV..."
+                    }
+                    
                     // Generate output file
                     val result = GarminCsvGenerator.generateGarminCsv(processedData, outputFileName) { current, total ->
                         runOnUiThread {
-                            statusText.text = "Processing... $current/$total"
+                            statusText.text = "Generating file... $current/$total"
                         }
                     }
                     
