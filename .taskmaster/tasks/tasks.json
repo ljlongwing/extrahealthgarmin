@@ -577,7 +577,7 @@
         "dependencies": [
           9
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -585,7 +585,7 @@
             "description": "Compile a comprehensive list of common import errors users encounter with Garmin Connect, such as 'An error occurred with your upload. Please try again.', unsupported file formats, and data formatting issues.",
             "dependencies": [],
             "details": "Review Garmin forums, support pages, and user reports to identify recurring import issues. Document each error message, its likely causes, and whether it affects CSV, TCX, GPX, or other file types. Include examples and user scenarios for clarity.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify the documented errors match real user reports and cover all major scenarios mentioned in the parent task."
           },
           {
@@ -596,7 +596,7 @@
               1
             ],
             "details": "Write clear instructions on how to prepare CSV files (e.g., use text editors, avoid Excel to prevent formatting changes), check for required columns, and handle date/time formats. Provide troubleshooting steps such as retrying uploads, checking file integrity, and reducing batch sizes. Highlight known bugs (e.g., TCX upload errors that may still succeed) and workarounds.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test the guide with sample error scenarios to ensure instructions are actionable and effective. Validate that warnings about Excel and batch sizes are prominent."
           },
           {
@@ -609,7 +609,7 @@
               21
             ],
             "details": "Collaborate with UI/UX to ensure the help section is easy to find and navigate. Structure content for quick reference, with expandable FAQs, search functionality, and links to further support. Ensure localization readiness for both English and Russian as per Task 21.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify the help section is accessible from relevant screens, displays correctly in both languages, and that all documented errors and solutions are included and easy to understand."
           }
         ]
@@ -632,7 +632,7 @@
             "description": "Measure and analyze the current performance of CSV parsing and writing logic to identify bottlenecks.",
             "dependencies": [],
             "details": "Use profiling tools to benchmark the time and memory usage for parsing and writing CSV files up to 5MB. Identify which parts of the code are slowest or consume the most resources. Document findings for targeted optimization.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Run profiling on representative 5MB CSV files; record parsing and writing times, and memory usage."
           },
           {
@@ -1437,7 +1437,7 @@
     ],
     "metadata": {
       "created": "2025-10-24T09:09:09.436Z",
-      "updated": "2025-10-26T18:27:46.596Z",
+      "updated": "2025-10-26T18:39:38.091Z",
       "description": "Tasks for master context"
     }
   }

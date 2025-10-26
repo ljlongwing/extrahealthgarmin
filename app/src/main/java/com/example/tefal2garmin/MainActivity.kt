@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -36,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var resultText: TextView
     private lateinit var openGarminButton: Button
+    private lateinit var helpButton: Button
     private lateinit var tryAgainButton: Button
     
     // ViewModel
@@ -104,6 +106,13 @@ class MainActivity : AppCompatActivity() {
             welcomeText.text = "File received: ${fileInfo.fileName}"
             statusText.text = "Size: ${formatFileSize(fileInfo.fileSize)} | Starting validation..."
         }
+        
+        // Show help button in appropriate states
+        helpButton.visibility = when {
+            state.showError -> View.VISIBLE
+            state.showSuccess -> View.VISIBLE
+            else -> View.INVISIBLE
+        }
     }
     
     private fun initializeViews() {
@@ -113,11 +122,16 @@ class MainActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         resultText = findViewById(R.id.resultText)
         openGarminButton = findViewById(R.id.openGarminButton)
+        helpButton = findViewById(R.id.helpButton)
         tryAgainButton = findViewById(R.id.tryAgainButton)
         
         // Set button click listeners
         openGarminButton.setOnClickListener {
             openGarminConnect()
+        }
+        
+        helpButton.setOnClickListener {
+            showHelpDialog()
         }
         
         tryAgainButton.setOnClickListener {
@@ -274,6 +288,7 @@ class MainActivity : AppCompatActivity() {
         resultText.visibility = View.VISIBLE
         resultText.text = getString(R.string.success_ready_to_save)
         openGarminButton.visibility = View.VISIBLE
+        helpButton.visibility = View.VISIBLE
         tryAgainButton.visibility = View.VISIBLE
     }
     
@@ -289,6 +304,33 @@ class MainActivity : AppCompatActivity() {
         resultText.text = "Please try again"
         openGarminButton.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.VISIBLE
+    }
+    
+    private fun showHelpDialog() {
+        val helpContent = getString(R.string.help_content)
+        
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.help_title))
+            .setMessage(helpContent)
+            .setPositiveButton(getString(R.string.help_close)) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setNeutralButton(getString(R.string.help_troubleshooting)) { dialog, _ ->
+                openTroubleshootingGuide()
+            }
+            .show()
+    }
+    
+    private fun openTroubleshootingGuide() {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("file:///android_asset/docs/complete-troubleshooting-guide.md")
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open troubleshooting guide", e)
+            Toast.makeText(this, "Failed to open help guide", Toast.LENGTH_SHORT).show()
+        }
     }
     
     private fun openGarminConnect() {

@@ -91,13 +91,24 @@
         style="@style/Widget.Material3.Button.OutlinedButton" />
 
     <Button
+        android:id="@+id/helpButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Help"
+        android:layout_marginEnd="8dp"
+        android:visibility="invisible"
+        app:layout_constraintTop_toBottomOf="@id/openGarminButton"
+        app:layout_constraintEnd_toStartOf="@id/guidelineVertical"
+        style="@style/Widget.Material3.Button.OutlinedButton" />
+
+    <Button
         android:id="@+id/tryAgainButton"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="Try Again"
         android:layout_marginStart="8dp"
         android:visibility="invisible"
-        app:layout_constraintTop_toBottomOf="@id/resultText"
+        app:layout_constraintTop_toBottomOf="@id/helpButton"
         app:layout_constraintStart_toEndOf="@id/guidelineVertical"
         style="@style/Widget.Material3.Button.OutlinedButton" />
 
