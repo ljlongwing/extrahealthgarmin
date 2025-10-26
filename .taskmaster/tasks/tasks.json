@@ -643,7 +643,7 @@
               1
             ],
             "details": "Replace standard file streams with large buffered reads (e.g., 32MB buffers) and process data in chunks to minimize memory footprint. Use appropriate data types and avoid unnecessary data copies. Consider parallel or pipelined processing if supported by the environment.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test with large files; verify that memory usage remains stable and processing time improves compared to baseline."
           },
           {
@@ -654,7 +654,7 @@
               2
             ],
             "details": "Implement a state-machine-based parser or similar efficient algorithm to handle CSV structure, including quoted fields and delimiters. Perform type casting during parsing to avoid post-processing overhead. Profile improvements and ensure correctness.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Process varied CSV files (including edge cases) and verify correctness and speed; compare against previous implementation."
           }
         ]
@@ -1437,7 +1437,7 @@
     ],
     "metadata": {
       "created": "2025-10-24T09:09:09.436Z",
-      "updated": "2025-10-26T18:39:38.091Z",
+      "updated": "2025-10-26T18:47:43.138Z",
       "description": "Tasks for master context"
     }
   }

@@ -18,7 +18,8 @@ class CsvReader(private val contentResolver: ContentResolver) {
         
         try {
             contentResolver.openInputStream(uri)?.use { inputStream ->
-                BufferedReader(InputStreamReader(inputStream)).use { reader ->
+                // Use UTF-8 encoding for proper character handling
+                BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
                         line?.let { lines.add(it) }

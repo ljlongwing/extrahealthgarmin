@@ -80,31 +80,37 @@ class FileRepository(
                 val parsedData = csvReader.parseCsvLines(lines)
                 val headers = parsedData.firstOrNull() ?: emptyList()
                 
-                val processedDataList = parsedData.drop(1).mapIndexed { index, row ->
-                    val recordMap = headers.zip(row).toMap()
-                    onProgress("Processing record ${index + 1}/${parsedData.size - 1}")
-                    val result = RecordProcessor.processRecord(recordMap, csvValidator)
-                    result
-                }
+                // Pre-allocate with appropriate capacity for better memory management
+                val processedDataList = ArrayList<Map<String, String?>>(lines.size - 1)
+                val batchSize = 50 // Process in batches to manage memory
                 
-                val processedData = processedDataList.mapNotNull { result ->
-                    if (result.success) result.record else null
+                parsedData.drop(1).chunked(batchSize).forEachIndexed { batchIndex, batch ->
+                    onProgress("Processing records ${batchIndex * batchSize + 1}-${(batchIndex * batchSize + batch.size)}")
+                    
+                    batch.forEachIndexed { index, row ->
+                        val recordMap = headers.zip(row).toMap()
+                        onProgress("Processing record ${batchIndex * batchSize + index + 2}/${lines.size - 1}")
+                        val result = RecordProcessor.processRecord(recordMap, csvValidator)
+                        result.record?.let { processedRecord ->
+                            processedDataList.add(processedRecord)
+                        }
+                    }
                 }
                 
                 onProgress("Generating CSV...")
                 val outputFileName = generateOutputFileName()
-                val csvData = prepareCsvData(processedData) { current, total ->
+                val csvData = prepareCsvData(processedDataList) { current, total ->
                     onProgress("Generating file... $current/$total")
                 }
-                
+
                 Result.success(
                     CsvProcessingResult(
-                        recordsProcessed = parsedData.size,
-                        recordsGenerated = processedData.size,
+                        recordsProcessed = parsedData.size - 1, // Subtract header
+                        recordsGenerated = processedDataList.size,
                         outputFile = null, // File will be saved via SAF
                         outputFileName = outputFileName,
                         csvData = csvData,
-                        validationReport = null // We'll handle validation differently
+                        validationReport = null
                     )
                 )
             } ?: Result.failure(Exception("Failed to open input stream"))
