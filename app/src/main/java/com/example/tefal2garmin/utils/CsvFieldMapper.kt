@@ -20,9 +20,22 @@ class CsvFieldMapper {
         
         // Russian month abbreviation mapping
         private val RUSSIAN_MONTHS = mapOf(
-            "янв" to "01", "фев" to "02", "мар" to "03", "апр" to "04", "мая" to "05", "июн" to "06", 
+            "янв" to "01", "фев" to "02", "мар" to "03", "апр" to "04", "мая" to "05", "июн" to "06",
             "июл" to "07", "авг" to "08", "сен" to "09", "окт" to "10", "ноя" to "11", "дек" to "12"
         )
+
+        private fun isValidDate(day: Int, month: Int, year: Int): Boolean {
+            if (month < 1 || month > 12) return false
+            if (day < 1) return false
+
+            val daysInMonth = when (month) {
+                2 -> if (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) 29 else 28
+                4, 6, 9, 11 -> 30
+                else -> 31
+            }
+
+            return day <= daysInMonth
+        }
         
         private fun normalizeWeight(weightValue: String): String {
             return weightValue.replace(",", ".").trim()
@@ -36,71 +49,59 @@ class CsvFieldMapper {
             return fatValue.replace(",", ".").trim()
         }
         
-        private fun normalizeDate(dateValue: String): String {
+        fun normalizeDate(dateValue: String): String {
             val cleanDate = dateValue.trim()
             
             // Handle various Russian date formats and convert to YYYY-MM-DD
             return when {
-                cleanDate.matches(Regex("""\d{1,2}\s*(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)\s*\d{4}""")) -> {
+                cleanDate.lowercase().matches(Regex("""\d{1,2}\s*(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)\s*\d{4}""")) -> {
                     // Format: "DD MMMM YYYY" (e.g., "24 января 2024")
-                    val parts = cleanDate.split(" ")
+                    val parts = cleanDate.split("\\s+".toRegex()).filter { it.isNotEmpty() }
                     if (parts.size >= 3) {
                         val day = parts[0].padStart(2, '0')
                         val month = parts[1].lowercase()
                         val monthNumber = RUSSIAN_MONTHS[month]
                         val year = parts[2]
-                        
-                        String.format("%02d-%02d-%04d", 
-                            day.toIntOrNull() ?: 1,
-                            monthNumber,
-                            year.toIntOrNull() ?: 2024
-                        )
+
+                        if (monthNumber != null) {
+                            val dayInt = day.toIntOrNull() ?: 1
+                            val monthInt = monthNumber.toIntOrNull() ?: 1
+                            val yearInt = year.toIntOrNull() ?: 2024
+
+                            // Validate date (basic check for valid day/month combinations)
+                            if (isValidDate(dayInt, monthInt, yearInt)) {
+                                String.format("%02d-%02d-%04d", dayInt, monthInt, yearInt)
+                            } else {
+                                cleanDate
+                            }
+                        } else {
+                            cleanDate
+                        }
                     } else {
-                        Log.w(TAG, "Unrecognized date format: $cleanDate")
                         cleanDate
                     }
                 }
                 
-                cleanDate.matches(Regex("""\d{2}\.\d{2}\.\d{4}""")) -> {
-                    // Format: "DD.MM.YYYY" (e.g., "24.01.2024")
+                cleanDate.matches(Regex("""\d{1,2}\.\d{1,2}\.\d{4}""")) -> {
+                    // Format: "D.M.YYYY" or "DD.MM.YYYY" (e.g., "1.1.2024" or "15.01.2024")
                     val parts = cleanDate.split(".")
                     if (parts.size >= 3) {
-                        val day = parts[0].padStart(2, '0')
-                        val month = parts[1]
-                        val year = parts[2]
-                        
-                        String.format("%02d-%02d-%04d", 
-                            day.toIntOrNull() ?: 1,
-                            month.toIntOrNull() ?: 1,
-                            year.toIntOrNull() ?: 2024
-                        )
+                        val dayInt = parts[0].toIntOrNull() ?: 1
+                        val monthInt = parts[1].toIntOrNull() ?: 1
+                        val yearInt = parts[2].toIntOrNull() ?: 2024
+
+                        // Validate date
+                        if (isValidDate(dayInt, monthInt, yearInt)) {
+                            String.format("%02d-%02d-%04d", dayInt, monthInt, yearInt)
+                        } else {
+                            cleanDate
+                        }
                     } else {
-                        Log.w(TAG, "Unrecognized date format: $cleanDate")
-                        cleanDate
-                    }
-                }
-                
-                cleanDate.matches(Regex("""\d{1,2}\.\d{4}""")) -> {
-                    // Format: "D.MM.YYYY" (e.g., "24.1.2024")
-                    val parts = cleanDate.split(".")
-                    if (parts.size >= 2) {
-                        val day = parts[0].padStart(2, '0')
-                        val month = parts[1]
-                        val year = parts[2]
-                        
-                        String.format("%02d-%02d-%04d", 
-                            day.toIntOrNull() ?: 1,
-                            month.toIntOrNull() ?: 1,
-                            year.toIntOrNull() ?: 2024
-                        )
-                    } else {
-                        Log.w(TAG, "Unrecognized date format: $cleanDate")
                         cleanDate
                     }
                 }
                 
                 else -> {
-                    Log.w(TAG, "Unrecognized date format: $cleanDate")
                     cleanDate
                 }
             }

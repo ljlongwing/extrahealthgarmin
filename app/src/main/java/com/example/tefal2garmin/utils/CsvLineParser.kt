@@ -17,148 +17,150 @@ class CsvLineParser {
     
     fun parseCsvLine(line: String): List<String> {
         val fields = mutableListOf<String>()
+        val currentField = StringBuilder()
         var currentIndex = 0
         var inQuotes = false
-        
+
         while (currentIndex < line.length) {
-            when {
-                !inQuotes && line[currentIndex] == '"' -> {
-                    // Start of quoted field
-                    inQuotes = true
-                    currentIndex++
-                }
-                inQuotes && line[currentIndex] == '"' -> {
-                    // Check for escaped quote
-                    if (currentIndex + 1 < line.length && line[currentIndex + 1] == '"') {
-                        // Escaped quote, add both to field and skip both
-                        fields.add(if (fields.size > currentIndex) fields[currentIndex] + "\"" else "")
-                        fields[fields.size] = (fields[fields.size] ?: "") + "\"\""
+            when (line[currentIndex]) {
+                '"' -> {
+                    if (inQuotes && currentIndex + 1 < line.length && line[currentIndex + 1] == '"') {
+                        // Escaped quote within quoted field
+                        currentField.append('"')
                         currentIndex += 2
                     } else {
-                        // End of quoted field
-                        inQuotes = false
+                        // Toggle quote state
+                        inQuotes = !inQuotes
                         currentIndex++
                     }
                 }
-                !inQuotes && line[currentIndex] == ',' -> {
-                    // Field separator
-                    fields.add(if (fields.size > currentIndex) fields[currentIndex] + "," else "")
-                    currentIndex++
-                }
-                inQuotes || line[currentIndex] != ',' -> {
-                    // Regular character within field or quoted field
-                    val currentField = if (fields.size > currentIndex) fields[currentIndex] + line[currentIndex] else line[currentIndex].toString()
-                    fields[fields.size] = currentField
+                ',' -> {
+                    if (inQuotes) {
+                        // Comma within quoted field
+                        currentField.append(',')
+                    } else {
+                        // Field separator
+                        fields.add(currentField.toString())
+                        currentField.clear()
+                    }
                     currentIndex++
                 }
                 else -> {
-                    // Unexpected state
-                    Log.w(TAG, "Unexpected parsing state at index $currentIndex in line: $line")
+                    // Regular character
+                    currentField.append(line[currentIndex])
                     currentIndex++
                 }
             }
         }
-        
-        // Add the last field if we have one
-        if (fields.isNotEmpty() || currentIndex > 0) {
-            val lastFieldStart = if (fields.size > 0) fields.size else 0
-            val remainingText = line.substring(lastFieldStart).trim()
-            if (remainingText.isNotEmpty()) {
-                fields.add(remainingText)
-            }
-        }
-        
-        return fields.map { it.trim() }
+
+        // Add the last field
+        fields.add(currentField.toString())
+
+        return fields
     }
     
     fun mergeMultilineRecord(lines: List<String>, startIndex: Int): MergeResult {
         if (startIndex >= lines.size) {
             return MergeResult(emptyList(), startIndex, 0, "Start index beyond lines array")
         }
-        
-        val mergedLines = mutableListOf<String>()
-        var currentRecord = mutableListOf<String>()
+
+        val mergedRecords = mutableListOf<List<String>>()
         var i = startIndex
-        
+
         while (i < lines.size) {
             val line = lines[i].trim()
-            
+
             if (line.isEmpty()) {
                 i++
                 continue
             }
-            
-            val fields = parseCsvLine(line)
-            currentRecord.addAll(fields)
-            
-            // Check if this line completes the record
-            // A complete Tefal record should have 9-10 fields
-            if (fields.size >= 8) {
-                // This line likely completes a record
-                val mergedRecord = currentRecord.toList()
-                mergedLines.add(mergedRecord.joinToString(","))
-                currentRecord.clear()
+
+            // Check if this line starts a multiline record (unclosed quotes)
+            val quoteCount = line.count { it == '"' }
+            val hasUnclosedQuote = quoteCount % 2 == 1
+
+            if (hasUnclosedQuote) {
+                // This is the start of a multiline record, merge until we find the closing quote
+                val mergedLine = StringBuilder(line)
+                val startMergeIndex = i
+                i++
+
+                while (i < lines.size) {
+                    val nextLine = lines[i]
+                    mergedLine.append("\n").append(nextLine)
+                    val currentQuoteCount = mergedLine.count { it == '"' }
+                    if (currentQuoteCount % 2 == 0) {
+                        // Found the closing quote
+                        break
+                    }
+                    i++
+                }
+
+                // Parse the merged line
+                val fields = parseCsvLine(mergedLine.toString())
+                mergedRecords.add(fields)
                 i++
             } else {
-                // This line continues the record
+                // This line is a complete record
+                val fields = parseCsvLine(line)
+                mergedRecords.add(fields)
                 i++
             }
         }
-        
-        // Add any remaining fields
-        if (currentRecord.isNotEmpty()) {
-            mergedLines.add(currentRecord.joinToString(","))
-        }
-        
-        return MergeResult(mergedLines, i, 0, null)
+
+        return MergeResult(mergedRecords, i, mergedRecords.size, null)
     }
     
     fun detectAndMergeMultilineRecords(lines: List<String>): List<List<String>> {
-        val detector = MultilineCsvDetector()
-        val detectionResult = detector.detectMultilineIssues(lines)
-        
-        if (!detectionResult.hasIssues) {
-            // No issues detected, parse normally
-            return lines.map { parseCsvLine(it) }
-        }
-        
-        // Apply merging based on detected issues
+        // Simple implementation: check for unclosed quotes to detect multiline records
         val allRecords = mutableListOf<List<String>>()
         var i = 0
-        
+
         while (i < lines.size) {
             val line = lines[i].trim()
-            
+
             if (line.isEmpty()) {
                 i++
                 continue
             }
-            
-            // Simple heuristic: if line has very few commas, it might be continuation
-            val fields = parseCsvLine(line)
-            val shouldMergeWithNext = i + 1 < lines.size && 
-                (fields.size < 5 || // Tefal should have ~9-10 fields
-                lines[i + 1].count { it == ',' } < fields.size / 2)
-            
-            if (shouldMergeWithNext) {
-                val mergeResult = mergeMultilineRecord(lines, i)
-                allRecords.add(mergeResult.mergedLines)
-                i = mergeResult.nextIndex
+
+            // Check if this line starts a multiline record (unclosed quotes)
+            val quoteCount = line.count { it == '"' }
+            val hasUnclosedQuote = quoteCount % 2 == 1
+
+            if (hasUnclosedQuote) {
+                // This is the start of a multiline record, merge until we find the closing quote
+                val mergedLine = StringBuilder(line)
+                i++
+
+                while (i < lines.size) {
+                    val nextLine = lines[i]
+                    mergedLine.append("\n").append(nextLine)
+                    val currentQuoteCount = mergedLine.count { it == '"' }
+                    if (currentQuoteCount % 2 == 0) {
+                        // Found the closing quote
+                        break
+                    }
+                    i++
+                }
+
+                // Parse the merged line
+                val fields = parseCsvLine(mergedLine.toString())
+                allRecords.add(fields)
+                i++
             } else {
                 // This line is a complete record
+                val fields = parseCsvLine(line)
                 allRecords.add(fields)
                 i++
             }
         }
-        
-        Log.d(TAG, "Detected and merged ${detectionResult.issues.size} multiline issues")
-        Log.d(TAG, "Processed ${allRecords.size} total records")
-        
+
         return allRecords
     }
     
     data class MergeResult(
-        val mergedLines: List<String>,
+        val mergedRecords: List<List<String>>,
         val nextIndex: Int,
         val mergedCount: Int,
         val error: String?
