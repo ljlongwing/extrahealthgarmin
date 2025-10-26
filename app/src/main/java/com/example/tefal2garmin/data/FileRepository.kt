@@ -9,6 +9,7 @@ import com.example.tefal2garmin.utils.CsvReader
 import com.example.tefal2garmin.utils.CsvValidator
 import com.example.tefal2garmin.utils.RecordProcessor
 import com.example.tefal2garmin.utils.GarminCsvGenerator
+import com.example.tefal2garmin.utils.GarminCsvSchema
 import com.example.tefal2garmin.utils.ValidationReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -92,22 +93,20 @@ class FileRepository(
                 
                 onProgress("Generating CSV...")
                 val outputFileName = generateOutputFileName()
-                val result = GarminCsvGenerator.generateGarminCsv(processedData, outputFileName) { current, total ->
+                val csvData = prepareCsvData(processedData) { current, total ->
                     onProgress("Generating file... $current/$total")
                 }
                 
-                if (result.success) {
-                    Result.success(
-                        CsvProcessingResult(
-                            recordsProcessed = parsedData.size,
-                            recordsGenerated = result.recordsGenerated,
-                            outputFile = File("placeholder.csv"), // We'll handle file differently
-                            validationReport = null // We'll handle validation differently
-                        )
+                Result.success(
+                    CsvProcessingResult(
+                        recordsProcessed = parsedData.size,
+                        recordsGenerated = processedData.size,
+                        outputFile = null, // File will be saved via SAF
+                        outputFileName = outputFileName,
+                        csvData = csvData,
+                        validationReport = null // We'll handle validation differently
                     )
-                } else {
-                    Result.failure(Exception(result.error ?: "Unknown error occurred"))
-                }
+                )
             } ?: Result.failure(Exception("Failed to open input stream"))
             
         } catch (e: Exception) {
@@ -152,10 +151,47 @@ class FileRepository(
         return size
     }
     
-    private fun generateOutputFileName(): File {
+    private fun generateOutputFileName(): String {
         val timestamp = SimpleDateFormat("yyyy-MM-dd-HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "garmin-import-$timestamp.csv"
-        return File(context.getExternalFilesDir(null), fileName)
+        return "garmin-import-$timestamp.csv"
+    }
+    
+    private fun prepareCsvData(
+        records: List<Map<String, String?>>,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
+    ): String {
+        // Validate all records before writing
+        val validationResults = records.map { GarminCsvSchema.validateRecord(it) }
+        val invalidRecords = validationResults.filter { !it.isValid }
+        
+        if (invalidRecords.isNotEmpty()) {
+            invalidRecords.forEachIndexed { index, result ->
+                Log.w(TAG, "Invalid record ${index + 1}: ${result.issues.joinToString(", ")}")
+            }
+            throw Exception("Validation failed for ${invalidRecords.size} records")
+        }
+        
+        // Build CSV content as string
+        val csvContent = StringBuilder()
+        
+        // Write headers
+        csvContent.append(GarminCsvSchema.generateHeader())
+        csvContent.append("\n")
+        
+        // Write data records
+        records.forEachIndexed { index, record ->
+            if (index > 0) {
+                csvContent.append("\n")
+            }
+            
+            val csvLine = GarminCsvSchema.formatRecord(record)
+            csvContent.append(csvLine)
+            
+            // Report progress
+            onProgress(index + 1, records.size)
+        }
+        
+        return csvContent.toString()
     }
 }
 
@@ -168,5 +204,7 @@ data class CsvProcessingResult(
     val recordsProcessed: Int,
     val recordsGenerated: Int,
     val outputFile: File?,
+    val outputFileName: String? = null,
+    val csvData: String? = null,
     val validationReport: ValidationReport?
 )

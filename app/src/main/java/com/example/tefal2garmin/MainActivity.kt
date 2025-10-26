@@ -127,8 +127,13 @@ class MainActivity : AppCompatActivity() {
         resultText.setOnClickListener {
             viewModel.uiState.value?.let { state ->
                 if (state.showSuccess) {
-                    // Open file picker to save to Downloads
-                    saveFileLauncher.launch(null)
+                    // Get the generated filename and launch save dialog
+                    val fileName = viewModel.getOutputFileName()
+                    if (fileName != null) {
+                        saveFileLauncher.launch(fileName)
+                    } else {
+                        saveFileLauncher.launch(null)
+                    }
                 }
             }
         }
@@ -137,9 +142,35 @@ class MainActivity : AppCompatActivity() {
     private fun initializeSaveFileLauncher() {
         saveFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
             if (uri != null) {
-                Log.d(TAG, "Output file saved to: ${uri.toString()}")
-                runOnUiThread {
-                    resultText.text = "File saved to: ${uri.lastPathSegment ?: "unknown"}"
+                // Get CSV data and filename from ViewModel
+                val csvData = viewModel.getCsvData()
+                val fileName = viewModel.getOutputFileName()
+                
+                if (csvData != null && fileName != null) {
+                    try {
+                        // Write CSV data to the selected location
+                        contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            outputStream.write(csvData.toByteArray(Charsets.UTF_8))
+                            outputStream.flush()
+                        }
+                        
+                        Log.d(TAG, "Output file saved to: ${uri.toString()}")
+                        runOnUiThread {
+                            resultText.text = "File saved: $fileName"
+                            Toast.makeText(this@MainActivity, "File saved successfully", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to save file", e)
+                        runOnUiThread {
+                            resultText.text = "Failed to save file"
+                            Toast.makeText(this@MainActivity, "Failed to save file", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } else {
+                    Log.w(TAG, "No CSV data available to save")
+                    runOnUiThread {
+                        resultText.text = "No data available to save"
+                    }
                 }
             } else {
                 Log.w(TAG, "User cancelled file save")

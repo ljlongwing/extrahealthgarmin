@@ -139,6 +139,30 @@ class MainViewModel(
         _uiState.value = MainUiState()
     }
     
+    fun saveOutputFile() {
+        _uiState.value?.let { state ->
+            state.processingResult?.let { result ->
+                if (result.csvData != null && result.outputFileName != null) {
+                    // Trigger file save with prepared data
+                    // This will be handled by MainActivity
+                    updateState { 
+                        it.copy(
+                            statusMessage = "Ready to save ${result.outputFileName}..."
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    fun getOutputFileName(): String? {
+        return _uiState.value?.processingResult?.outputFileName
+    }
+    
+    fun getCsvData(): String? {
+        return _uiState.value?.processingResult?.csvData
+    }
+    
     fun getGarminConnectUrl(): String {
         return GARMIN_CONNECT_URL
     }

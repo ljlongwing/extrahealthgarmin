@@ -487,7 +487,7 @@
           8,
           11
         ],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -506,7 +506,7 @@
               1
             ],
             "details": "Use the current date and time to generate the filename. Format the CSV data according to Garmin requirements. Ensure the data is ready for writing before proceeding to file creation.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Check that the filename matches the required pattern and the CSV data is correctly formatted and ready for output."
           },
           {
@@ -517,7 +517,7 @@
               2
             ],
             "details": "Use the SAF URI to create and write the CSV file in the Downloads directory. Handle any necessary permissions and ensure the file is accessible to the user after saving. Confirm that the file appears in the Downloads folder and is readable.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Save a test file and verify its presence and accessibility in the Downloads folder. Attempt to open the file from a file manager to confirm correct saving."
           }
         ]
@@ -1437,7 +1437,7 @@
     ],
     "metadata": {
       "created": "2025-10-24T09:09:09.436Z",
-      "updated": "2025-10-26T18:17:04.665Z",
+      "updated": "2025-10-26T18:27:46.596Z",
       "description": "Tasks for master context"
     }
   }
