@@ -15,8 +15,10 @@
     <!-- Success Messages -->
     <string name="success_file_processed">Конвертация завершена успешно!</string>
     <string name="success_records_summary">Успешно обработано %1$d записей и создано %2$d записей Garmin</string>
-    <string name="success_ready_to_save">📁 Нажмите здесь, чтобы сохранить конвертированный файл</string>
+    <string name="success_ready_to_save">Файл готов к сохранению на устройство</string>
+    <string name="file_saved_auto">Файл сохранен: %s</string>
     <string name="toast_opening_save_dialog">Открытие диалога сохранения файла...</string>
+    <string name="toast_garmin_open_failed">Не удалось открыть Garmin Connect</string>
 
     <!-- UI Labels -->
     <string name="label_try_again">Попробовать снова</string>
@@ -48,8 +50,7 @@
     <!-- Toast Messages -->
     <string name="toast_file_save_success">Файл успешно сохранен</string>
     <string name="toast_file_save_failed">Не удалось сохранить файл</string>
-    <string name="toast_help_open_failed">Не удалось открыть руководство помощи</string>
-    <string name="toast_garmin_open_failed">Не удалось открыть Garmin Connect. Пожалуйста, проверьте, установлен ли браузер.</string>
+    <string name="toast_help_open_failed">Не удалось открыть руководство</string>
 
     <!-- Help Dialog -->
     <string name="help_title">Помощь и устранение неисправностей</string>

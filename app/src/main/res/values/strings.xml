@@ -15,8 +15,10 @@
     <!-- Success Messages -->
     <string name="success_file_processed">Conversion completed successfully!</string>
     <string name="success_records_summary">Successfully processed %1$d records and generated %2$d Garmin records</string>
-    <string name="success_ready_to_save">📁 Tap here to save converted file</string>
+    <string name="success_ready_to_save">File ready to save to device</string>
+    <string name="file_saved_auto">File saved: %s</string>
     <string name="toast_opening_save_dialog">Opening file save dialog...</string>
+    <string name="toast_garmin_open_failed">Failed to open Garmin Connect</string>
     
     <!-- UI Labels -->
     <string name="label_try_again">Try Again</string>
@@ -49,7 +51,6 @@
     <string name="toast_file_save_success">File saved successfully</string>
     <string name="toast_file_save_failed">Failed to save file</string>
     <string name="toast_help_open_failed">Failed to open help guide</string>
-    <string name="toast_garmin_open_failed">Failed to open Garmin Connect. Please check if you have a browser installed.</string>
     
     <!-- Help Dialog -->
     <string name="help_title">Help &amp; Troubleshooting</string>

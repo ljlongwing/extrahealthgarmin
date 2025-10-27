@@ -63,42 +63,17 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:visibility="invisible" />
 
-    <!-- Success/Error Messages -->
-    <TextView
-        android:id="@+id/resultText"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text=""
-        android:textSize="16sp"
-        android:gravity="center"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="24dp"
-        app:layout_constraintTop_toBottomOf="@id/statusText"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:visibility="invisible" />
-
-    <!-- Action Buttons -->
-    <Button
-        android:id="@+id/openGarminButton"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/label_open_garmin"
-        android:layout_marginEnd="8dp"
-        android:visibility="invisible"
-        app:layout_constraintTop_toBottomOf="@id/resultText"
-        app:layout_constraintEnd_toStartOf="@id/guidelineVertical"
-        style="@style/Widget.Material3.Button.OutlinedButton" />
-
+    <!-- Action Buttons - Centered -->
     <Button
         android:id="@+id/helpButton"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="@string/label_help"
-        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="16dp"
         android:visibility="invisible"
-        app:layout_constraintTop_toBottomOf="@id/openGarminButton"
-        app:layout_constraintEnd_toStartOf="@id/guidelineVertical"
+        app:layout_constraintTop_toBottomOf="@id/statusText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         style="@style/Widget.Material3.Button.OutlinedButton" />
 
     <Button
@@ -106,18 +81,12 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="@string/label_try_again"
-        android:layout_marginStart="8dp"
         android:visibility="invisible"
         app:layout_constraintTop_toBottomOf="@id/helpButton"
-        app:layout_constraintStart_toEndOf="@id/guidelineVertical"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         style="@style/Widget.Material3.Button.OutlinedButton" />
 
-    <!-- Guideline for button layout -->
-    <androidx.constraintlayout.widget.Guideline
-        android:id="@+id/guidelineVertical"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        app:layout_constraintGuide_percent="0.5" />
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -6,6 +6,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.Log
 import android.view.View
@@ -19,6 +22,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import java.io.File
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import com.example.tefal2garmin.data.FileInfo
@@ -36,8 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var instructionsText: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
-    private lateinit var resultText: TextView
-    private lateinit var openGarminButton: Button
+
     private lateinit var helpButton: Button
     private lateinit var tryAgainButton: Button
     
@@ -47,7 +50,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     // SAF launcher for Downloads folder
-    private lateinit var saveFileLauncher: ActivityResultLauncher<String>
+
     
     companion object {
         private const val TAG = "MainActivity"
@@ -59,7 +62,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         
         initializeViews()
-        initializeSaveFileLauncher()
+
         observeViewModel()
         
         // Handle share intent
@@ -87,7 +90,8 @@ class MainActivity : AppCompatActivity() {
             }
             state.showSuccess -> {
                 state.processingResult?.let { result ->
-                    showSuccessState(result.recordsProcessed, result.recordsGenerated)
+                    // Automatically save file and open Garmin Connect
+                    autoSaveAndOpenGarmin(result)
                 }
             }
             state.showError -> {
@@ -121,15 +125,12 @@ class MainActivity : AppCompatActivity() {
         instructionsText = findViewById(R.id.instructionsText)
         progressBar = findViewById(R.id.progressBar)
         statusText = findViewById(R.id.statusText)
-        resultText = findViewById(R.id.resultText)
-        openGarminButton = findViewById(R.id.openGarminButton)
+
         helpButton = findViewById(R.id.helpButton)
         tryAgainButton = findViewById(R.id.tryAgainButton)
         
         // Set button click listeners
-        openGarminButton.setOnClickListener {
-            openGarminConnect()
-        }
+        // openGarminButton click listener removed - auto-open now
         
         helpButton.setOnClickListener {
             showHelpDialog()
@@ -139,66 +140,10 @@ class MainActivity : AppCompatActivity() {
             viewModel.resetToInitialState()
         }
         
-        resultText.setOnClickListener {
-            viewModel.uiState.value?.let { state ->
-                if (state.showSuccess) {
-                    // Show toast to indicate save dialog is opening
-                    Toast.makeText(this@MainActivity, getString(R.string.toast_opening_save_dialog), Toast.LENGTH_SHORT).show()
-
-                    // Get the generated filename and launch save dialog
-                    val fileName = viewModel.getOutputFileName()
-                    Log.d(TAG, "Launching save dialog for file: $fileName")
-                    if (fileName != null) {
-                        saveFileLauncher.launch(fileName)
-                    } else {
-                        Log.w(TAG, "No filename available, launching save dialog without suggested name")
-                        saveFileLauncher.launch(null)
-                    }
-                } else {
-                    Log.w(TAG, "Save button clicked but not in success state")
-                }
-            }
-        }
+        // resultText click listener removed - auto-save now
     }
     
-    private fun initializeSaveFileLauncher() {
-        saveFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-            if (uri != null) {
-                // Get CSV data and filename from ViewModel
-                val csvData = viewModel.getCsvData()
-                val fileName = viewModel.getOutputFileName()
-                
-                if (csvData != null && fileName != null) {
-                    try {
-                        // Write CSV data to the selected location
-                        contentResolver.openOutputStream(uri)?.use { outputStream ->
-                            outputStream.write(csvData.toByteArray(Charsets.UTF_8))
-                            outputStream.flush()
-                        }
-                        
-                        Log.d(TAG, "Output file saved to: ${uri.toString()}")
-                        runOnUiThread {
-                            resultText.text = getString(R.string.file_saved, fileName)
-                            Toast.makeText(this@MainActivity, getString(R.string.toast_file_save_success), Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to save file", e)
-                        runOnUiThread {
-                            resultText.text = getString(R.string.file_save_failed)
-                            Toast.makeText(this@MainActivity, getString(R.string.toast_file_save_failed), Toast.LENGTH_LONG).show()
-                        }
-                    }
-                } else {
-                    Log.w(TAG, "No CSV data available to save")
-                    runOnUiThread {
-                        resultText.text = getString(R.string.no_data_available)
-                    }
-                }
-            } else {
-                Log.w(TAG, "User cancelled file save")
-            }
-        }
-    }
+
     
     private fun handleIntent(intent: Intent?) {
         Log.d(TAG, "Handling intent: ${intent?.action}")
@@ -315,50 +260,94 @@ class MainActivity : AppCompatActivity() {
     
     private fun showInitialState() {
         welcomeText.visibility = View.VISIBLE
-        welcomeText.text = getString(R.string.welcome_message)
         instructionsText.visibility = View.VISIBLE
-        instructionsText.text = getString(R.string.instructions_message)
-        progressBar.visibility = View.INVISIBLE
         statusText.visibility = View.INVISIBLE
-        resultText.visibility = View.INVISIBLE
-        openGarminButton.visibility = View.INVISIBLE
+        progressBar.visibility = View.INVISIBLE
+        helpButton.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.INVISIBLE
     }
     
     private fun showProcessingState() {
-        welcomeText.visibility = View.INVISIBLE
-        instructionsText.text = getString(R.string.processing_message)
+        welcomeText.visibility = View.VISIBLE
+        instructionsText.visibility = View.VISIBLE
         statusText.visibility = View.VISIBLE
         progressBar.visibility = View.VISIBLE
-        resultText.visibility = View.INVISIBLE
-        openGarminButton.visibility = View.INVISIBLE
+        helpButton.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.INVISIBLE
     }
     
-    private fun showSuccessState(recordsProcessed: Int, recordsGenerated: Int) {
+    private fun autoSaveAndOpenGarmin(result: CsvProcessingResult) {
         welcomeText.visibility = View.INVISIBLE
         instructionsText.text = getString(R.string.success_file_processed)
-        statusText.text = String.format(getString(R.string.success_records_summary), recordsProcessed, recordsGenerated)
+        statusText.text = String.format(getString(R.string.success_records_summary), result.recordsProcessed, result.recordsGenerated)
         statusText.visibility = View.VISIBLE
         progressBar.visibility = View.INVISIBLE
-        resultText.visibility = View.VISIBLE
-        resultText.text = getString(R.string.success_ready_to_save)
-        openGarminButton.visibility = View.VISIBLE
         helpButton.visibility = View.VISIBLE
         tryAgainButton.visibility = View.VISIBLE
+
+        // Automatically save the file and open Garmin Connect
+        saveFileAutomatically(result)
+    }
+
+    private fun saveFileAutomatically(result: CsvProcessingResult) {
+        // Generate filename
+        val fileName = viewModel.getOutputFileName() ?: "garmin_weight_data_${System.currentTimeMillis()}.csv"
+
+        // Create file in Downloads directory automatically
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val outputFile = File(downloadsDir, fileName)
+
+        try {
+            // Get CSV data
+            val csvData = viewModel.getCsvData()
+            if (csvData != null) {
+                // Write file
+                outputFile.writeText(csvData, Charsets.UTF_8)
+
+                Log.d(TAG, "File automatically saved to: ${outputFile.absolutePath}")
+                runOnUiThread {
+                    statusText.text = getString(R.string.file_saved_auto, fileName)
+                    // Automatically open Garmin Connect after a short delay
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        openGarminConnect()
+                    }, 1500) // 1.5 second delay to show the success message
+                }
+            } else {
+                Log.e(TAG, "No CSV data available to save")
+                runOnUiThread {
+                    statusText.text = getString(R.string.no_data_available)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to auto-save file", e)
+            runOnUiThread {
+                statusText.text = getString(R.string.file_save_failed)
+            }
+        }
+    }
+
+    private fun openGarminConnect() {
+        try {
+            val garminUrl = viewModel.getGarminConnectUrl()
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(garminUrl))
+            startActivity(intent)
+            Log.d(TAG, "Opened Garmin Connect: $garminUrl")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open Garmin Connect", e)
+            runOnUiThread {
+                Toast.makeText(this, getString(R.string.toast_garmin_open_failed), Toast.LENGTH_LONG).show()
+            }
+        }
     }
     
     private fun showErrorState(message: String) {
         Log.e(TAG, "Error occurred: $message")
-        
+
         welcomeText.visibility = View.INVISIBLE
         instructionsText.text = getString(R.string.error_occurred)
         statusText.text = message
         statusText.visibility = View.VISIBLE
         progressBar.visibility = View.INVISIBLE
-        resultText.visibility = View.VISIBLE
-        resultText.text = getString(R.string.please_try_again)
-        openGarminButton.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.VISIBLE
     }
     
@@ -389,15 +378,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun openGarminConnect() {
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(viewModel.getGarminConnectUrl()))
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to open Garmin Connect: ${e.message}", e)
-            Toast.makeText(this, getString(R.string.toast_garmin_open_failed), Toast.LENGTH_LONG).show()
-        }
-    }
+
     
     private fun formatFileSize(bytes: Long): String {
         val kb = bytes / 1024.0

@@ -3,9 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permission for reading external storage for older Android versions -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    
+
+    <!-- Permission for writing to external storage for auto-save functionality -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <!-- Internet permission for potential future features -->
     <uses-permission android:name="android.permission.INTERNET" />
 
