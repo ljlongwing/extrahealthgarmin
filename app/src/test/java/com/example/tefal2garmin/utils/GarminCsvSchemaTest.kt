@@ -80,7 +80,7 @@ class GarminCsvSchemaTest {
         
         val csvLine = GarminCsvSchema.formatRecord(record)
         
-        assertEquals("Should format correctly", "2024-01-15,155.5,23.5,18.2", csvLine)
+        assertEquals("Should format correctly", "2024-01-15,155.5,18.2,23.5", csvLine)
     }
     
     @Test
@@ -94,14 +94,14 @@ class GarminCsvSchemaTest {
         
         val csvLine = GarminCsvSchema.formatRecord(record)
         
-        assertEquals("Should convert comma decimal to point", "2024-01-15,155,5,23,5,18,2", csvLine)
+        assertEquals("Should convert comma decimal to point", "2024-01-15,155,5,18,2,23,5", csvLine)
     }
     
     @Test
     fun testGenerateHeader() {
         val header = GarminCsvSchema.generateHeader()
-        
-        assertEquals("Should generate correct header", "Date,Weight,BMI,Fat", header)
+
+        assertEquals("Should generate correct header with Body prefix", "Body\nDate,Weight,Fat,BMI", header)
     }
     
     @Test

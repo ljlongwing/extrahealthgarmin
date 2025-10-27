@@ -7,9 +7,17 @@ class CsvFieldMapper {
     companion object {
         private const val TAG = "CsvFieldMapper"
         
-        // Expected Tefal column headers
-        private val TEFAL_HEADERS = listOf(
-            "Дата", "Время", "Вес (кг)", "ИМТ", "Жир (% тела)", "Воды (%)", "Скелет мышц (%)", 
+        // Expected Tefal column headers (primary format from Goodvibes-Dmitry)
+        private val TEFAL_HEADERS_PRIMARY = listOf(
+            "Время измерения", "Вес(кг)", "ИМТ", "Пульс(bpm)", "Процент жира(%)",
+            "Масса тела без жира(кг)", "Подкожный жир(%)", "Висцеральный жир",
+            "Вода в организме(%)", "Скелетные мышцы(%)", "Мышечная масса(кг)",
+            "Костная масса(кг)", "Белок(%)", "Величина основного обмена(kcal)", "Метаболический возраст"
+        )
+
+        // Alternative Tefal column headers (older format)
+        private val TEFAL_HEADERS_ALTERNATIVE = listOf(
+            "Дата", "Время", "Вес (кг)", "ИМТ", "Жир (% тела)", "Воды (%)", "Скелет мышц (%)",
             "Другое", "Физическая активность (уровень)", "Примечания"
         )
         
@@ -51,9 +59,38 @@ class CsvFieldMapper {
         
         fun normalizeDate(dateValue: String): String {
             val cleanDate = dateValue.trim()
-            
+
             // Handle various Russian date formats and convert to YYYY-MM-DD
             return when {
+                // Format: "окт. 25, 2025 09:51:52" (Tefal Goodvibes primary format)
+                cleanDate.lowercase().matches(Regex("""(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)\.\s*\d{1,2},\s*\d{4}.*""")) -> {
+                    val parts = cleanDate.split("\\s+|,\\s*".toRegex()).filter { it.isNotEmpty() }
+                    if (parts.size >= 3) {
+                        val monthAbbrev = parts[0].replace(".", "").lowercase()
+                        val day = parts[1].padStart(2, '0')
+                        val year = parts[2]
+
+                        val monthNumber = RUSSIAN_MONTHS[monthAbbrev]
+
+                        if (monthNumber != null) {
+                            val dayInt = day.toIntOrNull() ?: 1
+                            val monthInt = monthNumber.toIntOrNull() ?: 1
+                            val yearInt = year.toIntOrNull() ?: 2024
+
+                            // Validate date (basic check for valid day/month combinations)
+                            if (isValidDate(dayInt, monthInt, yearInt)) {
+                                String.format("%04d-%02d-%02d", yearInt, monthInt, dayInt)
+                            } else {
+                                cleanDate
+                            }
+                        } else {
+                            cleanDate
+                        }
+                    } else {
+                        cleanDate
+                    }
+                }
+
                 cleanDate.lowercase().matches(Regex("""\d{1,2}\s*(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)\s*\d{4}""")) -> {
                     // Format: "DD MMMM YYYY" (e.g., "24 января 2024")
                     val parts = cleanDate.split("\\s+".toRegex()).filter { it.isNotEmpty() }
@@ -81,7 +118,7 @@ class CsvFieldMapper {
                         cleanDate
                     }
                 }
-                
+
                 cleanDate.matches(Regex("""\d{1,2}\.\d{1,2}\.\d{4}""")) -> {
                     // Format: "D.M.YYYY" or "DD.MM.YYYY" (e.g., "1.1.2024" or "15.01.2024")
                     val parts = cleanDate.split(".")
@@ -100,7 +137,7 @@ class CsvFieldMapper {
                         cleanDate
                     }
                 }
-                
+
                 else -> {
                     cleanDate
                 }
@@ -112,26 +149,54 @@ class CsvFieldMapper {
             val normalizedHeaders = csvHeaders.map { header ->
                 header.trim().lowercase().replace(" ", "").replace("(", "").replace(")", "")
             }
-            
+
+            // Determine which header format we're dealing with
+            val isPrimaryFormat = TEFAL_HEADERS_PRIMARY.any { header ->
+                csvHeaders.contains(header)
+            }
+            val tefalHeaders = if (isPrimaryFormat) TEFAL_HEADERS_PRIMARY else TEFAL_HEADERS_ALTERNATIVE
+
             // Map Tefal headers to Garmin fields
             GARMIN_FIELDS.forEach { garminField ->
-                val tefalField = TEFAL_HEADERS.find { tefalHeader ->
-                    normalizedHeaders.contains(tefalHeader.replace(" ", "").replace("(", "").replace(")", ""))
-                }
-                
-                if (tefalField != null) {
-                    mapping[garminField] = tefalField ?: "Unknown"
+                when (garminField) {
+                    "Date" -> {
+                        // Date comes from "Время измерения" in primary format
+                        val dateField = if (isPrimaryFormat) "Время измерения" else "Дата"
+                        if (csvHeaders.contains(dateField)) {
+                            mapping[garminField] = dateField
+                        }
+                    }
+                    "Weight" -> {
+                        // Weight comes from "Вес(кг)" in primary format
+                        val weightField = if (isPrimaryFormat) "Вес(кг)" else "Вес (кг)"
+                        if (csvHeaders.contains(weightField)) {
+                            mapping[garminField] = weightField
+                        }
+                    }
+                    "BMI" -> {
+                        // BMI is the same in both formats
+                        if (csvHeaders.contains("ИМТ")) {
+                            mapping[garminField] = "ИМТ"
+                        }
+                    }
+                    "Fat" -> {
+                        // Fat comes from "Процент жира(%)" in primary format
+                        val fatField = if (isPrimaryFormat) "Процент жира(%)" else "Жир (% тела)"
+                        if (csvHeaders.contains(fatField)) {
+                            mapping[garminField] = fatField
+                        }
+                    }
                 }
             }
-            
+
             // Add unmapped Tefal fields as "Other" (for logging purposes)
-            normalizedHeaders.forEach { header ->
-                if (!mapping.containsKey(header)) {
+            csvHeaders.forEach { header ->
+                if (!mapping.containsValue(header)) {
                     mapping[header] = "Other"
                 }
             }
-            
-            Log.d(TAG, "Created field mapping: $mapping")
+
+            Log.d(TAG, "Created field mapping for ${if (isPrimaryFormat) "primary" else "alternative"} format: $mapping")
             return mapping
         }
         

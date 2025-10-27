@@ -26,11 +26,12 @@ class RecordProcessor {
             
             // Convert to Garmin format
             val garminFormat = try {
-                val rawDate = processedRecord["Дата"] ?: ""
+                // Extract values using primary format field names (from Goodvibes CSV)
+                val rawDate = processedRecord["Время измерения"] ?: ""
                 val normalizedDate = CsvFieldMapper.normalizeDate(rawDate)
-                val weight = processedRecord["Вес (кг)"]
+                val weight = processedRecord["Вес(кг)"]
                 val bmi = processedRecord["ИМТ"]
-                val fat = processedRecord["Жир (% тела)"]
+                val fat = processedRecord["Процент жира(%)"]
 
                 CsvFieldMapper.mapToGarminFormat(weight, bmi, fat, normalizedDate)
             } catch (e: Exception) {

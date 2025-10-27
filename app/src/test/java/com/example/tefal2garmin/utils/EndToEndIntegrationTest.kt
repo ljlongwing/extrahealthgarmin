@@ -68,8 +68,9 @@ class EndToEndIntegrationTest {
         // Verify output format
         val outputContent = outputFile.readText()
         val lines = outputContent.lines().filter { it.isNotEmpty() }
-        Assert.assertEquals("Should have header + 2 data lines", 3, lines.size)
-        Assert.assertEquals("Header should be correct", "Date,Weight,BMI,Fat", lines[0])
+        Assert.assertEquals("Should have Body + header + 2 data lines", 4, lines.size)
+        Assert.assertEquals("First line should be Body", "Body", lines[0])
+        Assert.assertEquals("Header should be correct", "Date,Weight,Fat,BMI", lines[1])
         Assert.assertTrue("Should contain converted dates", outputContent.contains("2024-01-15"))
     }
 
@@ -193,7 +194,72 @@ class EndToEndIntegrationTest {
         // The isValidUtf8 check might not catch this specific case, but the test demonstrates the concept
     }
 
+    @Test
+    fun testEndToEnd_GoodvibesDmitryFormat() {
+        // Test the actual Goodvibes-Dmitry CSV file format with Russian date format
+        val csvContent = """
+            Время измерения,Вес(кг),ИМТ,Пульс(bpm),Процент жира(%),Масса тела без жира(кг),Подкожный жир(%),Висцеральный жир,Вода в организме(%),Скелетные мышцы(%),Мышечная масса(кг),Костная масса(кг),Белок(%),Величина основного обмена(kcal),Метаболический возраст
+            "окт. 25, 2025 09:51:52",79.65,24.60,88.00,21.90,62.20,19.40,7.00,56.40,44.50,59.10,3.11,17.80,1713.00,52.00
+            "окт. 21, 2025 08:20:53",80.25,24.80,94.00,21.70,62.80,19.20,7.00,56.50,44.60,59.70,3.14,17.90,1727.00,52.00
+        """.trimIndent()
 
+        // Parse CSV content manually for testing (simulating what CsvReader would do)
+        val lines = csvContent.lines().filter { it.isNotEmpty() }
+        val headers = CsvLineParser().parseCsvLine(lines[0])
+        val records = lines.drop(1).map { line ->
+            val values = CsvLineParser().parseCsvLine(line)
+            headers.zip(values).toMap()
+        }
+
+        Assert.assertEquals("Should have parsed headers", 15, headers.size)
+        Assert.assertEquals("Should have 2 data records", 2, records.size)
+
+        // Test header validation (skip logging in tests)
+        // Just test that the headers contain the required fields
+        val hasRequiredFields = headers.contains("Время измерения") && headers.contains("Вес(кг)") && headers.contains("ИМТ")
+        Assert.assertTrue("Headers should contain required fields for Goodvibes-Dmitry format", hasRequiredFields)
+
+        // Test date parsing directly
+        val dateNormalizer = CsvFieldMapper
+        val parsedDate1 = dateNormalizer.normalizeDate("окт. 25, 2025 09:51:52")
+        val parsedDate2 = dateNormalizer.normalizeDate("окт. 21, 2025 08:20:53")
+
+        Assert.assertEquals("Date should be parsed from 'окт. 25, 2025 09:51:52'", "2025-10-25", parsedDate1)
+        Assert.assertEquals("Date should be parsed from 'окт. 21, 2025 08:20:53'", "2025-10-21", parsedDate2)
+
+        // Test that headers contain expected fields
+        Assert.assertTrue("Should contain date field", headers.contains("Время измерения"))
+        Assert.assertTrue("Should contain weight field", headers.contains("Вес(кг)"))
+        Assert.assertTrue("Should contain BMI field", headers.contains("ИМТ"))
+        Assert.assertTrue("Should contain fat field", headers.contains("Процент жира(%)"))
+
+        // Test record mapping (simplified)
+        val firstRecord = records[0]
+        val mappedRecord = dateNormalizer.mapToGarminFormat(
+            weightKg = firstRecord["Вес(кг)"],
+            bmi = firstRecord["ИМТ"],
+            fatPercentage = firstRecord["Процент жира(%)"],
+            date = parsedDate1
+        )
+
+        Assert.assertEquals("Mapped date should be correct", "2025-10-25", mappedRecord["Date"])
+        Assert.assertNotNull("Weight should be present", mappedRecord["Weight"])
+        Assert.assertEquals("BMI should be correct", "24.60", mappedRecord["BMI"])
+        Assert.assertEquals("Fat percentage should be correct", "21.90", mappedRecord["Fat"])
+
+        // Test CSV generation with sample records
+        val sampleRecords = listOf(mappedRecord)
+        val outputFile = File.createTempFile("goodvibes_output.csv", null)
+        val generationResult = GarminCsvGenerator.generateGarminCsv(sampleRecords, outputFile)
+
+        Assert.assertTrue("CSV generation should succeed", generationResult.success)
+        Assert.assertEquals("Should generate records", 1, generationResult.recordsGenerated)
+        Assert.assertTrue("Output file should exist", outputFile.exists())
+
+        // Verify output contains correctly formatted dates
+        val outputContent = outputFile.readText()
+        Assert.assertTrue("Should contain converted date", outputContent.contains("2025-10-25"))
+    }
 
     /**
      * Helper method to create temporary test files

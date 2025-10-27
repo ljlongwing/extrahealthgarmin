@@ -11,13 +11,14 @@ object GarminCsvSchema {
     const val HEADER_BMI = "BMI"
     const val HEADER_FAT = "Fat"
     
-    private val REQUIRED_HEADERS = listOf(HEADER_DATE, HEADER_WEIGHT, HEADER_BMI, HEADER_FAT)
+    private val REQUIRED_HEADERS = listOf(HEADER_DATE, HEADER_WEIGHT, HEADER_FAT, HEADER_BMI)
     
     /**
-     * Generates the CSV header line for Garmin format
+     * Generates the CSV header for Garmin format
+     * Garmin Connect expects "Body" as the first line, followed by CSV headers
      */
     fun generateHeader(): String {
-        return REQUIRED_HEADERS.joinToString(",")
+        return "Body\n" + REQUIRED_HEADERS.joinToString(",")
     }
     
     /**
@@ -72,8 +73,8 @@ object GarminCsvSchema {
         return listOf(
             record[HEADER_DATE] ?: "",
             record[HEADER_WEIGHT] ?: "",
-            record[HEADER_BMI] ?: "",
-            record[HEADER_FAT] ?: ""
+            record[HEADER_FAT] ?: "",
+            record[HEADER_BMI] ?: ""
         ).joinToString(",")
     }
     

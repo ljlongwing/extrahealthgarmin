@@ -9,6 +9,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.example.tefal2garmin.data.FileInfo
 import com.example.tefal2garmin.data.FileRepository
 import com.example.tefal2garmin.data.CsvProcessingResult
@@ -95,7 +97,9 @@ class MainViewModel(
                 
                 // Process the CSV file
                 val result = fileRepository.processCsvFile(uri) { progress ->
-                    updateState { it.copy(statusMessage = progress) }
+                    viewModelScope.launch(Dispatchers.Main) {
+                        updateState { it.copy(statusMessage = progress) }
+                    }
                 }
                 
                 result.fold(

@@ -10,10 +10,10 @@ class RecordProcessorTest {
     @Test
     fun testProcessRecord_ValidRecord() {
         val record = mapOf(
-            "Дата" to "2024-01-15",
-            "Вес (кг)" to "70.5",
+            "Время измерения" to "2024-01-15",
+            "Вес(кг)" to "70.5",
             "ИМТ" to "23.5",
-            "Жир (% тела)" to "18.2"
+            "Процент жира(%)" to "18.2"
         )
         
         val result = RecordProcessor.processRecord(record, validator)
@@ -34,7 +34,7 @@ class RecordProcessorTest {
     fun testProcessRecord_RecordWithMissingFields() {
         val record = mapOf(
             "ИМТ" to "23.5",
-            "Жир (% тела)" to "18.2"
+            "Процент жира(%)" to "18.2"
         )
         
         val result = RecordProcessor.processRecord(record, validator)
@@ -53,8 +53,8 @@ class RecordProcessorTest {
     @Test
     fun testProcessRecord_RecordWithInvalidFields() {
         val record = mapOf(
-            "Дата" to "invalid-date",
-            "Вес (кг)" to "not-a-number"
+            "Время измерения" to "invalid-date",
+            "Вес(кг)" to "not-a-number"
         )
         
         val result = RecordProcessor.processRecord(record, validator)
@@ -71,10 +71,10 @@ class RecordProcessorTest {
     @Test
     fun testProcessRecord_RecordWithValidations() {
         val record = mapOf(
-            "Дата" to "15.01.2024",
-            "Вес (кг)" to "75,3",
-            "ИМТ" to "24.5",
-            "Жир (% тела)" to "20.1"
+            "Время измерения" to "15.01.2024",
+            "Вес(кг)" to "75,3",
+            "ИМТ" to "24.1",
+            "Процент жира(%)" to "20.1"
         )
         
         val result = RecordProcessor.processRecord(record, validator)
@@ -92,10 +92,10 @@ class RecordProcessorTest {
     @Test
     fun testProcessRecord_EmptyOptionalFields() {
         val record = mapOf(
-            "Дата" to "2024-01-15",
-            "Вес (кг)" to "70.5",
-            "ИМТ" to "",
-            "Жир (% тела)" to ""
+            "Время измерения" to "2024-01-15",
+            "Вес(кг)" to "70.5",
+            "ИМТ" to "23.5",
+            "Процент жира(%)" to ""
         )
         
         val result = RecordProcessor.processRecord(record, validator)

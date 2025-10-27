@@ -41,7 +41,7 @@ class FileRepository(
         try {
             onProgress("Validating encoding...")
             
-            // Open input stream and validate encoding
+            // Validate encoding first
             contentResolver.openInputStream(uri)?.use { inputStream ->
                 val encodingResult = csvValidator.validateEncoding(inputStream)
                 if (!encodingResult.isValid) {
@@ -49,42 +49,40 @@ class FileRepository(
                         Exception(encodingResult.errorMessage ?: "Invalid encoding")
                     )
                 }
-                
-                // Reset stream to read from beginning
-                inputStream.reset()
-                
-                onProgress("Reading CSV...")
-                val lines = csvReader.readCsvFile(uri)
-                if (lines.isEmpty()) {
-                    return@withContext Result.failure(Exception("CSV file is empty"))
-                }
-                
-                onProgress("Validating format...")
-                val delimiterResult = csvValidator.validateDelimiter(lines)
-                if (!delimiterResult.isValid) {
-                    return@withContext Result.failure(
-                        Exception(delimiterResult.errorMessage ?: "Invalid delimiter")
-                    )
-                }
-                
-                onProgress("Validating headers...")
-                val headerLine = lines[0]
-                val headerResult = csvValidator.validateHeaders(headerLine)
-                if (!headerResult.isValid) {
-                    return@withContext Result.failure(
-                        Exception(headerResult.errorMessage ?: "Invalid headers")
-                    )
-                }
-                
-                onProgress("Processing records...")
-                val parsedData = csvReader.parseCsvLines(lines)
-                val headers = parsedData.firstOrNull() ?: emptyList()
-                
-                // Pre-allocate with appropriate capacity for better memory management
-                val processedDataList = ArrayList<Map<String, String?>>(lines.size - 1)
-                val batchSize = 50 // Process in batches to manage memory
-                
-                parsedData.drop(1).chunked(batchSize).forEachIndexed { batchIndex, batch ->
+            }
+
+            onProgress("Reading CSV...")
+            val lines = csvReader.readCsvFile(uri)
+            if (lines.isEmpty()) {
+                return@withContext Result.failure(Exception("CSV file is empty"))
+            }
+
+            onProgress("Validating format...")
+            val delimiterResult = csvValidator.validateDelimiter(lines)
+            if (!delimiterResult.isValid) {
+                return@withContext Result.failure(
+                    Exception(delimiterResult.errorMessage ?: "Invalid delimiter")
+                )
+            }
+
+            onProgress("Validating headers...")
+            val headerLine = lines[0]
+            val headerResult = csvValidator.validateHeaders(headerLine)
+            if (!headerResult.isValid) {
+                return@withContext Result.failure(
+                    Exception(headerResult.errorMessage ?: "Invalid headers")
+                )
+            }
+
+            onProgress("Processing records...")
+            val parsedData = csvReader.parseCsvLines(lines)
+            val headers = parsedData.firstOrNull() ?: emptyList()
+
+            // Pre-allocate with appropriate capacity for better memory management
+            val processedDataList = ArrayList<Map<String, String?>>(lines.size - 1)
+            val batchSize = 50 // Process in batches to manage memory
+
+            parsedData.drop(1).chunked(batchSize).forEachIndexed { batchIndex, batch ->
                     onProgress("Processing records ${batchIndex * batchSize + 1}-${(batchIndex * batchSize + batch.size)}")
                     
                     batch.forEachIndexed { index, row ->
@@ -103,17 +101,16 @@ class FileRepository(
                     onProgress("Generating file... $current/$total")
                 }
 
-                Result.success(
-                    CsvProcessingResult(
-                        recordsProcessed = parsedData.size - 1, // Subtract header
-                        recordsGenerated = processedDataList.size,
-                        outputFile = null, // File will be saved via SAF
-                        outputFileName = outputFileName,
-                        csvData = csvData,
-                        validationReport = null
-                    )
+            Result.success(
+                CsvProcessingResult(
+                    recordsProcessed = parsedData.size - 1, // Subtract header
+                    recordsGenerated = processedDataList.size,
+                    outputFile = null, // File will be saved via SAF
+                    outputFileName = outputFileName,
+                    csvData = csvData,
+                    validationReport = null
                 )
-            } ?: Result.failure(Exception("Failed to open input stream"))
+            )
             
         } catch (e: Exception) {
             Log.e(TAG, "Error processing CSV file", e)
@@ -183,7 +180,7 @@ class FileRepository(
         // Write headers
         csvContent.append(GarminCsvSchema.generateHeader())
         csvContent.append("\n")
-        
+
         // Write data records
         records.forEachIndexed { index, record ->
             if (index > 0) {

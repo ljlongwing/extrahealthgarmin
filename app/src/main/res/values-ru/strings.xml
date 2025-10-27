@@ -13,9 +13,10 @@
     <string name="error_file_save_failed">Не удалось сохранить выходной файл. Пожалуйста, проверьте доступное место в хранилище и разрешения.</string>
 
     <!-- Success Messages -->
-    <string name="success_file_processed">Преобразование завершено успешно!</string>
+    <string name="success_file_processed">Конвертация завершена успешно!</string>
     <string name="success_records_summary">Успешно обработано %1$d записей и создано %2$d записей Garmin</string>
-    <string name="success_ready_to_save">Файл готов к сохранению на устройство</string>
+    <string name="success_ready_to_save">📁 Нажмите здесь, чтобы сохранить конвертированный файл</string>
+    <string name="toast_opening_save_dialog">Открытие диалога сохранения файла...</string>
 
     <!-- UI Labels -->
     <string name="label_try_again">Попробовать снова</string>

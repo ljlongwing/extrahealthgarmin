@@ -86,8 +86,8 @@ class GarminCsvGeneratorTest {
 
         // Verify file content
         val content = outputFile.readText()
-        assertTrue("Should contain Date,Weight,BMI,Fat header", content.contains("Date,Weight,BMI,Fat"))
-        assertTrue("Should contain sample data", content.contains("2024-01-15,155.00,23.50,18.20"))
+        assertTrue("Should contain Date,Weight,Fat,BMI header", content.contains("Date,Weight,Fat,BMI"))
+        assertTrue("Should contain sample data", content.contains("2024-01-15,155.00,18.20,23.50"))
     }
 
     @Test
@@ -106,15 +106,18 @@ class GarminCsvGeneratorTest {
         val content = outputFile.readText()
         val lines = content.lines().filter { it.isNotEmpty() }
 
-        assertEquals("Should have header + 1 data line", 2, lines.size)
+        assertEquals("Should have Body + header + 1 data line", 3, lines.size)
 
-        // Verify header is first line and in correct order
-        val headerLine = lines[0]
-        assertEquals("Header should be Date,Weight,BMI,Fat", "Date,Weight,BMI,Fat", headerLine)
+        // Verify Body is first line
+        assertEquals("First line should be Body", "Body", lines[0])
+
+        // Verify header is second line and in correct order
+        val headerLine = lines[1]
+        assertEquals("Header should be Date,Weight,Fat,BMI", "Date,Weight,Fat,BMI", headerLine)
 
         // Verify data line follows header order
-        val dataLine = lines[1]
-        assertEquals("Data should match header order", "2024-01-15,155.50,23.5,18.2", dataLine)
+        val dataLine = lines[2]
+        assertEquals("Data should match header order", "2024-01-15,155.50,18.2,23.5", dataLine)
     }
 
     @Test
@@ -132,14 +135,17 @@ class GarminCsvGeneratorTest {
         val content = outputFile.readText()
         val lines = content.lines().filter { it.isNotEmpty() }
 
+        // Verify Body is first line
+        assertEquals("First line should be Body", "Body", lines[0])
+
         // Verify header only contains required fields
-        val headerLine = lines[0]
-        assertEquals("Header should only contain required fields", "Date,Weight,BMI,Fat", headerLine)
+        val headerLine = lines[1]
+        assertEquals("Header should only contain required fields", "Date,Weight,Fat,BMI", headerLine)
         assertFalse("Header should not contain extra fields", headerLine.contains("ExtraField"))
 
         // Verify data line doesn't include extra fields
-        val dataLine = lines[1]
-        assertEquals("Data should only contain required fields", "2024-01-15,155.50,23.5,18.2", dataLine)
+        val dataLine = lines[2]
+        assertEquals("Data should only contain required fields", "2024-01-15,155.50,18.2,23.5", dataLine)
         assertFalse("Data should not contain extra fields", dataLine.contains("ignored"))
     }
 
@@ -160,11 +166,14 @@ class GarminCsvGeneratorTest {
         val content = outputFile.readText()
         val lines = content.lines().filter { it.isNotEmpty() }
 
-        assertEquals("Should have header + 3 data lines", 4, lines.size)
+        assertEquals("Should have Body + header + 3 data lines", 5, lines.size)
 
-        // Verify all lines start with header
-        val headerLine = lines[0]
-        assertEquals("Header should be consistent", "Date,Weight,BMI,Fat", headerLine)
+        // Verify Body is first line
+        assertEquals("First line should be Body", "Body", lines[0])
+
+        // Verify header is consistent
+        val headerLine = lines[1]
+        assertEquals("Header should be consistent", "Date,Weight,Fat,BMI", headerLine)
 
         // Verify each data line has exactly 4 fields in correct order
         for (i in 1..3) {
@@ -238,7 +247,7 @@ class GarminCsvGeneratorTest {
         val lines = content.lines().filter { it.isNotEmpty() }
 
         // Verify the data line is properly formatted
-        val dataLine = lines[1]
+        val dataLine = lines[2]
         assertEquals("Data should be properly formatted", "2024-01-15,155.50,23.5,18.2", dataLine)
 
         // Ensure no unwanted characters are introduced
@@ -288,11 +297,11 @@ class GarminCsvGeneratorTest {
         val content = outputFile.readText()
         val lines = content.lines().filter { it.isNotEmpty() }
 
-        assertEquals("Should have header + 2 data lines", 3, lines.size)
+        assertEquals("Should have Body + header + 2 data lines", 4, lines.size)
 
         // Verify header order
         val headerLine = lines[0]
-        assertEquals("Header should be in correct order", "Date,Weight,BMI,Fat", headerLine)
+        assertEquals("Header should be in correct order", "Date,Weight,Fat,BMI", headerLine)
 
         // Verify both data lines follow the same order regardless of input map order
         val dataLine1 = lines[1]

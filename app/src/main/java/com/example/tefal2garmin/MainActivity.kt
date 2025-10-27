@@ -142,13 +142,20 @@ class MainActivity : AppCompatActivity() {
         resultText.setOnClickListener {
             viewModel.uiState.value?.let { state ->
                 if (state.showSuccess) {
+                    // Show toast to indicate save dialog is opening
+                    Toast.makeText(this@MainActivity, getString(R.string.toast_opening_save_dialog), Toast.LENGTH_SHORT).show()
+
                     // Get the generated filename and launch save dialog
                     val fileName = viewModel.getOutputFileName()
+                    Log.d(TAG, "Launching save dialog for file: $fileName")
                     if (fileName != null) {
                         saveFileLauncher.launch(fileName)
                     } else {
+                        Log.w(TAG, "No filename available, launching save dialog without suggested name")
                         saveFileLauncher.launch(null)
                     }
+                } else {
+                    Log.w(TAG, "Save button clicked but not in success state")
                 }
             }
         }
