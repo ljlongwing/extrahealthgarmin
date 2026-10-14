@@ -10,6 +10,8 @@ import org.junit.runner.RunWith
 import org.junit.Assert
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 
 @RunWith(AndroidJUnit4::class)
 class ShareIntentTest {
@@ -77,32 +79,58 @@ class EndToEndIntegrationTest {
 
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
-    // Unit test version that doesn't require Android context
-    companion object {
-        @JvmStatic
-        fun createEndToEndUnitTest(): EndToEndUnitTest {
-            return EndToEndUnitTest()
-        }
-    }
-
     // Test Data Constants
-    private val validTefalHeaders = "Дата,Вес,ИМТ,Жир"
-    private val validTefalData = """
-        15.01.2024,155.5,23.5,18.2
-        16.01.2024,154.75,23.4,18.1
-        17.01.2024,154.0,23.3,18.0
-    """.trimIndent()
+
+    // Primary Goodvibes export header (15 columns, as in the real Tefal export).
+    // RecordProcessor reads only: Время измерения / Вес(кг) / ИМТ / Процент жира(%).
+    private val validTefalHeaders = "Время измерения,Вес(кг),ИМТ,Пульс(bpm),Процент жира(%),Масса тела без жира(кг),Подкожный жир(%),Висцеральный жир,Вода в организме(%),Скелетные мышцы(%),Мышечная масса(кг),Костная масса(кг),Белок(%),Величина основного обмена(kcal),Метаболический возраст"
+
+    private val validTefalData = listOf(
+        goodvibesRow("\"15.01.2024\"", "155.5", "23.5", "18.2"),
+        goodvibesRow("\"16.01.2024\"", "154.75", "23.4", "18.1"),
+        goodvibesRow("\"17.01.2024\"", "154.0", "23.3", "18.0")
+    ).joinToString("\n")
 
     private val invalidHeaders = "Name,Age,City"
     private val invalidData = "John,25,New York"
 
+    /**
+     * Builds one full 15-column Goodvibes data row.
+     * Column order mirrors the primary header:
+     * date, weight, bmi, pulse, fat, then the 10 non-primary columns.
+     * Dates are quoted like in the real export.
+     */
+    private fun goodvibesRow(
+        date: String,
+        weight: String,
+        bmi: String,
+        fat: String,
+        pulse: String = "88.00",
+        leanMass: String = "62.20",
+        subcutaneousFat: String = "19.40",
+        visceralFat: String = "7.00",
+        bodyWater: String = "56.40",
+        skeletalMuscle: String = "44.50",
+        muscleMass: String = "59.10",
+        boneMass: String = "3.11",
+        protein: String = "17.80",
+        basalMetabolism: String = "1713.00",
+        metabolicAge: String = "52.00"
+    ): String {
+        return listOf(
+            date, weight, bmi, pulse, fat, leanMass, subcutaneousFat, visceralFat,
+            bodyWater, skeletalMuscle, muscleMass, boneMass, protein,
+            basalMetabolism, metabolicAge
+        ).joinToString(",")
+    }
+
     @Test
     fun testEndToEnd_ValidCsvProcessing() {
         // Arrange: Create valid Tefal CSV file
-        val inputFile = createTempFile("valid_tefal.csv", """
-            $validTefalHeaders
-            $validTefalData
-        """.trimIndent())
+        val inputFile = createTempFile(
+            "valid_tefal.csv",
+            listOf(validTefalHeaders, validTefalData).joinToString("\n")
+        )
 
         val outputFile = File(context.cacheDir, "test_output.csv")
 
@@ -110,7 +138,7 @@ class EndToEndIntegrationTest {
         val result = processCsvFile(inputFile, outputFile)
 
         // Assert: Verify successful processing
-        Assert.assertTrue("Processing should succeed", result.success)
+        Assert.assertTrue("Processing should succeed: ${result.error}", result.success)
         Assert.assertEquals("Should process 3 records", 3, result.recordsProcessed)
         Assert.assertEquals("Should generate 3 records", 3, result.recordsGenerated)
         Assert.assertTrue("Output file should exist", outputFile.exists())
@@ -119,8 +147,16 @@ class EndToEndIntegrationTest {
         val outputContent = outputFile.readText()
         val lines = outputContent.lines().filter { it.isNotEmpty() }
 
-        Assert.assertEquals("Should have header + 3 data lines", 4, lines.size)
-        Assert.assertEquals("Header should be correct", "Date,Weight,BMI,Fat", lines[0])
+        Assert.assertEquals("Should have Body + header + 3 data lines", 5, lines.size)
+        Assert.assertEquals("First line should be Body", "Body", lines[0])
+        Assert.assertEquals("Header should be correct (Fat before BMI)", "Date,Weight,Fat,BMI", lines[1])
+
+        // Verify a full data row: Date,Weight,Fat,BMI
+        Assert.assertEquals(
+            "First data row should follow the Garmin schema order",
+            "2024-01-15,155.5,18.2,23.5",
+            lines[2]
+        )
 
         // Verify date conversion (DD.MM.YYYY -> YYYY-MM-DD)
         Assert.assertTrue("Should contain converted dates", outputContent.contains("2024-01-15"))
@@ -130,10 +166,10 @@ class EndToEndIntegrationTest {
     @Test
     fun testEndToEnd_InvalidHeaders() {
         // Arrange: Create CSV with wrong headers
-        val inputFile = createTempFile("invalid_headers.csv", """
-            $invalidHeaders
-            $invalidData
-        """.trimIndent())
+        val inputFile = createTempFile(
+            "invalid_headers.csv",
+            listOf(invalidHeaders, invalidData).joinToString("\n")
+        )
 
         val outputFile = File(context.cacheDir, "test_invalid_output.csv")
 
@@ -148,11 +184,15 @@ class EndToEndIntegrationTest {
     @Test
     fun testEndToEnd_MissingRequiredFields() {
         // Arrange: Create CSV with missing required fields
-        val inputFile = createTempFile("missing_fields.csv", """
-            $validTefalHeaders
-            15.01.2024,,23.5,18.2
-            16.01.2024,154.75,,
-        """.trimIndent())
+        // Row 1: empty weight; Row 2: empty BMI and fat
+        val inputFile = createTempFile(
+            "missing_fields.csv",
+            listOf(
+                validTefalHeaders,
+                goodvibesRow("\"15.01.2024\"", "", "23.5", "18.2"),
+                goodvibesRow("\"16.01.2024\"", "154.75", "", "")
+            ).joinToString("\n")
+        )
 
         val outputFile = File(context.cacheDir, "test_missing_output.csv")
 
@@ -167,10 +207,13 @@ class EndToEndIntegrationTest {
     @Test
     fun testEndToEnd_InvalidDateFormat() {
         // Arrange: Create CSV with invalid date format
-        val inputFile = createTempFile("invalid_date.csv", """
-            $validTefalHeaders
-            invalid-date,155.5,23.5,18.2
-        """.trimIndent())
+        val inputFile = createTempFile(
+            "invalid_date.csv",
+            listOf(
+                validTefalHeaders,
+                goodvibesRow("invalid-date", "155.5", "23.5", "18.2")
+            ).joinToString("\n")
+        )
 
         val outputFile = File(context.cacheDir, "test_invalid_date_output.csv")
 
@@ -184,13 +227,21 @@ class EndToEndIntegrationTest {
 
     @Test
     fun testEndToEnd_MultilineRecords() {
-        // Arrange: Create CSV with multiline records (simulating notes with newlines)
-        val inputFile = createTempFile("multiline.csv", """
-            $validTefalHeaders
-            "15.01.2024",155.5,23.5,"18.2
-            with extra line"
-            16.01.2024,154.75,23.4,18.1
-        """.trimIndent())
+        // Arrange: Create CSV with a quoted value spanning two physical lines.
+        // The multiline value is placed in the Пульс(bpm) column, which the
+        // pipeline ignores: the Garmin schema requires a decimal Fat value, so
+        // a multiline Fat field could never pass generation. The merge itself
+        // (unclosed-quote handling in detectAndMergeMultilineRecords) is
+        // exercised identically regardless of which column holds the value.
+        val multilinePulse = "\"88.00\nand a continuation line\""
+        val inputFile = createTempFile(
+            "multiline.csv",
+            listOf(
+                validTefalHeaders,
+                goodvibesRow("\"15.01.2024\"", "155.5", "23.5", "18.2", pulse = multilinePulse),
+                goodvibesRow("\"16.01.2024\"", "154.75", "23.4", "18.1")
+            ).joinToString("\n")
+        )
 
         val outputFile = File(context.cacheDir, "test_multiline_output.csv")
 
@@ -198,20 +249,24 @@ class EndToEndIntegrationTest {
         val result = processCsvFile(inputFile, outputFile)
 
         // Assert: Should handle multiline records
-        Assert.assertTrue("Processing should succeed with multiline records", result.success)
+        Assert.assertTrue(
+            "Processing should succeed with multiline records: ${result.error}",
+            result.success
+        )
         Assert.assertEquals("Should process 2 records", 2, result.recordsProcessed)
+        Assert.assertEquals("Should generate 2 records", 2, result.recordsGenerated)
     }
 
     @Test
     fun testEndToEnd_LargeFile() {
         // Arrange: Create larger CSV file with multiple records
         val records = (1..50).joinToString("\n") { index ->
-            "15.01.2024,${155.5 + index * 0.1},23.5,18.2"
+            goodvibesRow("\"15.01.2024\"", "${155.5 + index * 0.1}", "23.5", "18.2")
         }
-        val inputFile = createTempFile("large_file.csv", """
-            $validTefalHeaders
-            $records
-        """.trimIndent())
+        val inputFile = createTempFile(
+            "large_file.csv",
+            listOf(validTefalHeaders, records).joinToString("\n")
+        )
 
         val outputFile = File(context.cacheDir, "test_large_output.csv")
 
@@ -219,7 +274,7 @@ class EndToEndIntegrationTest {
         val result = processCsvFile(inputFile, outputFile)
 
         // Assert: Should handle large files efficiently
-        Assert.assertTrue("Processing should succeed for large file", result.success)
+        Assert.assertTrue("Processing should succeed for large file: ${result.error}", result.success)
         Assert.assertEquals("Should process all 50 records", 50, result.recordsProcessed)
         Assert.assertEquals("Should generate all 50 records", 50, result.recordsGenerated)
     }
@@ -241,10 +296,16 @@ class EndToEndIntegrationTest {
 
     @Test
     fun testEndToEnd_NonUtf8Encoding() {
-        // Arrange: Create file with non-UTF8 content (simulate wrong encoding)
-        val inputFile = createTempFile("non_utf8.csv", "Дата,Вес,ИМТ,Жир\n15.01.2024,155.5,23.5,18.2")
-        // Write with different encoding
-        inputFile.writeText("Дата,Вес,ИМТ,Жир\n15.01.2024,155.5,23.5,18.2", Charsets.ISO_8859_1)
+        // Arrange: Build a valid CSV, then corrupt it with a byte that can never
+        // occur in UTF-8 (0xFF). Writing the text with a legacy charset would not
+        // work: unmappable characters are silently replaced with '?' bytes, which
+        // are still valid UTF-8, so detection would never trigger.
+        val inputFile = createTempFile("non_utf8.csv", "")
+        val validCsvBytes = listOf(
+            validTefalHeaders,
+            goodvibesRow("15.01.2024", "155.5", "23.5", "18.2")
+        ).joinToString("\n").toByteArray(Charsets.UTF_8)
+        inputFile.writeBytes(validCsvBytes + byteArrayOf(0xFF.toByte()))
 
         val outputFile = File(context.cacheDir, "test_encoding_output.csv")
 
@@ -253,11 +314,15 @@ class EndToEndIntegrationTest {
 
         // Assert: Should detect encoding issues
         Assert.assertFalse("Processing should fail for non-UTF8 file", result.success)
-        Assert.assertTrue("Should indicate encoding error", result.error?.contains("encoding") ?: false)
+        Assert.assertTrue(
+            "Should indicate encoding error, was: ${result.error}",
+            result.error?.contains("encoding") ?: false
+        )
     }
 
     /**
      * Helper method to simulate the full CSV processing pipeline
+     * (mirrors FileRepository.processCsvFile)
      */
     private fun processCsvFile(inputFile: File, outputFile: File): GarminCsvGenerator.GenerationResult {
         return try {
@@ -273,7 +338,7 @@ class EndToEndIntegrationTest {
                 )
             }
 
-            // Step 2: Validate encoding (simplified check)
+            // Step 2: Validate encoding (strict UTF-8 check, like CsvValidator.validateEncoding)
             if (!isValidUtf8(inputFile)) {
                 return GarminCsvGenerator.GenerationResult(
                     success = false,
@@ -296,35 +361,26 @@ class EndToEndIntegrationTest {
                 )
             }
 
-            // Step 4: Validate headers
-            val headers = lines[0].split(",").map { it.trim() }
-            val expectedHeaders = listOf("Дата", "Вес", "ИМТ", "Жир")
-            if (!headers.containsAll(expectedHeaders)) {
+            // Step 4: Parse rows (quoted multiline records are merged, as in the
+            // real pipeline) and validate headers against the primary Goodvibes
+            // keys that RecordProcessor actually reads
+            val parsedRows = CsvLineParser().detectAndMergeMultilineRecords(lines)
+            val headers = parsedRows.firstOrNull() ?: emptyList()
+            val expectedHeaders = listOf("Время измерения", "Вес(кг)", "ИМТ", "Процент жира(%)")
+            val missingHeaders = expectedHeaders.filter { !headers.contains(it) }
+            if (missingHeaders.isNotEmpty()) {
                 return GarminCsvGenerator.GenerationResult(
                     success = false,
                     recordsProcessed = 0,
                     recordsGenerated = 0,
-                    validationIssues = listOf("Missing required headers: ${expectedHeaders.filter { !headers.contains(it) }}"),
+                    validationIssues = listOf("Missing required headers: $missingHeaders"),
                     error = "Invalid CSV headers"
                 )
             }
 
-            // Step 5: Parse and normalize records
-            val dataLines = lines.drop(1)
-            val records = mutableListOf<Map<String, String>>()
-
-            for (line in dataLines) {
-                val fields = CsvLineParser().parseCsvLine(line)
-                if (fields.size >= 4) {
-                    val record = mapOf(
-                        "Дата" to (fields.getOrNull(0)?.trim() ?: ""),
-                        "Вес (кг)" to (fields.getOrNull(1)?.trim() ?: ""),
-                        "ИМТ" to (fields.getOrNull(2)?.trim() ?: ""),
-                        "Жир (% тела)" to (fields.getOrNull(3)?.trim() ?: "")
-                    )
-                    records.add(record)
-                }
-            }
+            // Step 5: Map parsed rows to records keyed by the real Tefal header
+            // names (same as headers.zip(row).toMap() in FileRepository)
+            val records = parsedRows.drop(1).map { row -> headers.zip(row).toMap() }
 
             // Step 6: Process records (normalize dates, validate)
             val processedRecords = mutableListOf<Map<String, String?>>()
@@ -379,11 +435,16 @@ class EndToEndIntegrationTest {
     }
 
     /**
-     * Helper method to check if file is valid UTF-8
+     * Helper method to check if file is valid UTF-8.
+     * Uses a strict decoder: malformed or unmappable bytes must be reported,
+     * not silently replaced (readText replaces them and can never fail).
      */
     private fun isValidUtf8(file: File): Boolean {
         return try {
-            file.readText(Charsets.UTF_8)
+            Charsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(file.readBytes()))
             true
         } catch (e: Exception) {
             false
