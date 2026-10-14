@@ -156,6 +156,14 @@ class MainActivity : AppCompatActivity() {
         //     -PGARMINSPIKE_PASSWORD=... [-PGARMINSPIKE_MFA_CODE=...]
         // Watch with: adb logcat -s MainActivity GarminAuth GarminHttp
         if (BuildConfig.DEBUG) {
+            // Attached to the instructions text as well because statusText is
+            // INVISIBLE on the initial screen (showInitialState) and invisible
+            // views receive no touch events — the spike must be reachable on
+            // a fresh launch.
+            instructionsText.setOnLongClickListener {
+                triggerGarminAuthSpike()
+                true
+            }
             statusText.setOnLongClickListener {
                 triggerGarminAuthSpike()
                 true
