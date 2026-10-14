@@ -26,9 +26,8 @@ An Android utility app that converts CSV weight data exported from Tefal Goodvib
 ### Usage
 1. **Export** weight data from Tefal Goodvibes as CSV
 2. **Share** the file and select "Tefal2Garmin Sync"
-3. **Wait** for processing to complete
-4. **Save** the converted file to your device
-5. **Import** into Garmin Connect
+3. **Wait** for processing to complete — the converted file is saved automatically to Downloads as `garmin-import-<timestamp>.csv`
+4. **Import** into Garmin Connect — the app opens the Garmin Connect import page automatically after 1.5 seconds
 
 ## 📋 Requirements
 
@@ -48,34 +47,36 @@ MVVM Architecture
 
 ## 🛠️ Technical Details
 
-### Supported Input Format
+### Input Example (Tefal Goodvibes Export)
 ```csv
-Date,Weight,BMI,Fat
-2024-01-15,75.5,24.2,18.5
-2024-01-16,75.2,24.1,18.3
+Время измерения,Вес(кг),ИМТ,Пульс(bpm),Процент жира(%),Масса тела без жира(кг),Подкожный жир(%),Висцеральный жир,Вода в организме(%),Скелетные мышцы(%),Мышечная масса(кг),Костная масса(кг),Белок(%),Величина основного обмена(kcal),Метаболический возраст
+"окт. 25, 2025 09:51:52",79.65,24.60,88.00,21.90,62.20,19.40,7.00,56.40,44.50,59.10,3.11,17.80,1713.00,52.00
+"окт. 21, 2025 08:20:53",80.25,24.80,94.00,21.70,62.80,19.20,7.00,56.50,44.60,59.70,3.14,17.90,1727.00,52.00
 ```
 
-### Output Format (Garmin Compatible)
+The date column contains Russian dates (`окт. 25, 2025 09:51:52`) and is quoted because it includes a comma (RFC-4180 multiline-safe parsing).
+
+### Output Example (Garmin Compatible)
 ```csv
 Body
-Date,Weight,BMI,Fat
-2024-01-15,75.5,24.2,18.5
-2024-01-16,75.2,24.1,18.3
+Date,Weight,Fat,BMI
+2025-10-25,79.65,21.90,24.60
+2025-10-21,80.25,21.70,24.80
 ```
 
 ### MIME Type Support
 - `text/csv` ✅
 - `text/comma-separated-values` ✅
 - `application/csv` ✅
+- `application/x-csv` ✅
 - `text/plain` ✅ (with CSV detection)
 - `application/vnd.ms-excel` ✅
-- `application/octet-stream` ✅
 
 ## 🔧 Development
 
 ### Prerequisites
 - Android Studio Arctic Fox or later
-- JDK 11 or higher
+- JDK 17 or higher
 - Android SDK API 34
 
 ### Build Commands
