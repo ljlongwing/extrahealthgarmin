@@ -12,6 +12,7 @@ import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.Log
 import android.view.View
+import android.webkit.WebView
 import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -368,10 +369,33 @@ class MainActivity : AppCompatActivity() {
     
     private fun openTroubleshootingGuide() {
         try {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("file:///android_asset/docs/complete-troubleshooting-guide.md")
-            }
-            startActivity(intent)
+            val guideText = assets.open("docs/complete-troubleshooting-guide.md")
+                .bufferedReader()
+                .use { it.readText() }
+
+            val escapedText = guideText
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+            val html = "<html><head>" +
+                "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+                "</head><body>" +
+                "<pre style=\"white-space:pre-wrap;word-wrap:break-word;font-family:monospace;font-size:13px;padding:8px\">" +
+                escapedText +
+                "</pre></body></html>"
+
+            val webView = WebView(this)
+            webView.settings.javaScriptEnabled = false
+            webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.help_troubleshooting))
+                .setView(webView)
+                .setPositiveButton(getString(R.string.help_close)) { dialog, _ ->
+                    dialog.dismiss()
+                }
+                .show()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open troubleshooting guide", e)
             Toast.makeText(this, getString(R.string.toast_help_open_failed), Toast.LENGTH_SHORT).show()
