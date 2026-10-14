@@ -84,11 +84,6 @@ fastlane/Preview.html
 fastlane/screenshots/
 fastlane/metadata/
 
-# Task Master AI
-.taskmaster/state.json
-.taskmaster/reports/
-.taskmaster/cache/
-
 # Claude Code
 .claude/cache/
 .claude/sessions/
