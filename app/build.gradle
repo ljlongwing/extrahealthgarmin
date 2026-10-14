@@ -13,6 +13,22 @@ android {
         versionCode 1
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Debug-only credentials for the Garmin DI-auth live spike
+        // (tefal2garmin-garmin-api-import-j5e.1). Supplied via Gradle
+        // properties and consumed by the hidden long-press trigger in
+        // MainActivity; blank by default so release and normal debug
+        // builds carry no credentials:
+        //   ./gradlew assembleDebug -PGARMINSPIKE_EMAIL=... \
+        //     -PGARMINSPIKE_PASSWORD=... [-PGARMINSPIKE_MFA_CODE=...]
+        buildConfigField "String", "GARMINSPIKE_EMAIL", "\"${project.findProperty('GARMINSPIKE_EMAIL') ?: ''}\""
+        buildConfigField "String", "GARMINSPIKE_PASSWORD", "\"${project.findProperty('GARMINSPIKE_PASSWORD') ?: ''}\""
+        buildConfigField "String", "GARMINSPIKE_MFA_CODE", "\"${project.findProperty('GARMINSPIKE_MFA_CODE') ?: ''}\""
+    }
+
+    buildFeatures {
+        // Required for the BuildConfig fields above (AGP 8+ opt-in).
+        buildConfig true
     }
 
     signingConfigs {
@@ -66,7 +82,10 @@ dependencies {
     
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    
+
+    // Garmin DI OAuth2 auth client (garmin/ package) — HTTP + tests
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
     testImplementation 'junit:junit:4.13.2'
     testImplementation "org.jetbrains.kotlin:kotlin-test"
     testImplementation 'org.mockito:mockito-core:5.1.1'
@@ -74,6 +93,11 @@ dependencies {
     testImplementation 'androidx.arch.core:core-testing:2.2.0'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
     testImplementation 'org.robolectric:robolectric:4.12.1'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    // Real org.json for JVM unit tests — the android.jar stub returns
+    // default values (see returnDefaultValues above), which would silently
+    // corrupt JSON handling in the garmin/ tests.
+    testImplementation 'org.json:json:20240303'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }

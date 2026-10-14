@@ -32,6 +32,12 @@ import com.example.tefal2garmin.ui.MainUiState
 import com.example.tefal2garmin.ui.MainViewModel
 import com.example.tefal2garmin.ui.MainViewModelFactory
 import com.example.tefal2garmin.utils.MimeTypeValidator
+import com.example.tefal2garmin.garmin.GarminAuthClient
+import com.example.tefal2garmin.garmin.GarminTokens
+import com.example.tefal2garmin.garmin.LoginResult
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.text.DecimalFormat
 
 class MainActivity : AppCompatActivity() {
@@ -140,8 +146,68 @@ class MainActivity : AppCompatActivity() {
         tryAgainButton.setOnClickListener {
             viewModel.resetToInitialState()
         }
-        
+
+        // Debug-only live-spike trigger for the Garmin DI OAuth2 auth client
+        // (task tefal2garmin-garmin-api-import-j5e.1): hidden long-press on the
+        // status text. No production UI — results go to logcat only. Compile
+        // it out of release behavior via BuildConfig.DEBUG; credentials come
+        // from BuildConfig fields fed by Gradle properties:
+        //   ./gradlew assembleDebug -PGARMINSPIKE_EMAIL=... \
+        //     -PGARMINSPIKE_PASSWORD=... [-PGARMINSPIKE_MFA_CODE=...]
+        // Watch with: adb logcat -s MainActivity GarminAuth GarminHttp
+        if (BuildConfig.DEBUG) {
+            statusText.setOnLongClickListener {
+                triggerGarminAuthSpike()
+                true
+            }
+        }
+
         // resultText click listener removed - auto-save now
+    }
+
+    /**
+     * Runs one Garmin DI login (and, when a code is supplied via
+     * -PGARMINSPIKE_MFA_CODE, the MFA resume) with the spike credentials.
+     * Output is logcat-only; secret values (password, tokens, tickets) are
+     * never logged — only lengths and client ids.
+     */
+    private fun triggerGarminAuthSpike() {
+        val email = BuildConfig.GARMINSPIKE_EMAIL
+        val password = BuildConfig.GARMINSPIKE_PASSWORD
+        if (email.isBlank() || password.isBlank()) {
+            Log.w(TAG, "Garmin spike: credentials absent; rebuild with " +
+                "-PGARMINSPIKE_EMAIL=... -PGARMINSPIKE_PASSWORD=...")
+            return
+        }
+        Log.i(TAG, "Garmin spike: starting DI OAuth2 login")
+        val client = GarminAuthClient()
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                when (val result = client.login(email, password)) {
+                    is LoginResult.NeedsMfa -> {
+                        Log.i(TAG, "Garmin spike: MFA required " +
+                            "(method=${result.clientState.mfaMethod})")
+                        val mfaCode = BuildConfig.GARMINSPIKE_MFA_CODE
+                        if (mfaCode.isBlank()) {
+                            Log.i(TAG, "Garmin spike: no -PGARMINSPIKE_MFA_CODE supplied; " +
+                                "stopping at MFA")
+                        } else {
+                            logSpikeTokens("after MFA resume", client.resumeLogin(result.clientState, mfaCode))
+                        }
+                    }
+                    is LoginResult.Success -> logSpikeTokens("login", result.tokens)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Garmin spike failed: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
+    }
+
+    private fun logSpikeTokens(stage: String, tokens: GarminTokens) {
+        // Lengths and ids only — token values must never reach logcat.
+        Log.i(TAG, "Garmin spike OK ($stage): di_client_id=${tokens.diClientId}, " +
+            "di_token.length=${tokens.diToken.length}, " +
+            "di_refresh_token.length=${tokens.diRefreshToken.length}")
     }
     
 
