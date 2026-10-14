@@ -246,9 +246,9 @@ class GarminCsvGeneratorTest {
         val content = outputFile.readText()
         val lines = content.lines().filter { it.isNotEmpty() }
 
-        // Verify the data line is properly formatted
+        // Verify the data line is properly formatted (GarminCsvSchema order: Date,Weight,Fat,BMI)
         val dataLine = lines[2]
-        assertEquals("Data should be properly formatted", "2024-01-15,155.50,23.5,18.2", dataLine)
+        assertEquals("Data should be properly formatted", "2024-01-15,155.50,18.2,23.5", dataLine)
 
         // Ensure no unwanted characters are introduced
         assertFalse("Should not contain newlines in data", dataLine.contains("\n"))
@@ -299,15 +299,15 @@ class GarminCsvGeneratorTest {
 
         assertEquals("Should have Body + header + 2 data lines", 4, lines.size)
 
-        // Verify header order
-        val headerLine = lines[0]
+        // Verify header order (line 0 is "Body", line 1 is the column header)
+        val headerLine = lines[1]
         assertEquals("Header should be in correct order", "Date,Weight,Fat,BMI", headerLine)
 
         // Verify both data lines follow the same order regardless of input map order
-        val dataLine1 = lines[1]
-        val dataLine2 = lines[2]
+        val dataLine1 = lines[2]
+        val dataLine2 = lines[3]
 
-        assertEquals("First data line should follow header order", "2024-01-15,155.50,23.5,18.2", dataLine1)
-        assertEquals("Second data line should follow header order", "2024-01-16,154.75,23.3,17.9", dataLine2)
+        assertEquals("First data line should follow header order", "2024-01-15,155.50,18.2,23.5", dataLine1)
+        assertEquals("Second data line should follow header order", "2024-01-16,154.75,17.9,23.3", dataLine2)
     }
 }

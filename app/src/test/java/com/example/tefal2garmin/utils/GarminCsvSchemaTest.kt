@@ -85,16 +85,19 @@ class GarminCsvSchemaTest {
     
     @Test
     fun testFormatRecord_RecordWithCommaDecimal() {
+        // formatRecord emits values VERBATIM — it does not normalize decimal separators.
+        // A comma decimal reaching this layer corrupts the CSV ("155,5" splits into two
+        // columns); normalization belongs upstream in RecordProcessor/CsvFieldMapper.
         val record = mapOf(
             "Date" to "2024-01-15",
-            "Weight" to "155,5", // Comma decimal
-            "BMI" to "23,5",
-            "Fat" to "18,2"
+            "Weight" to "155,5", // Comma decimal — passed through unchanged
+            "BMI" to "23.5",
+            "Fat" to "18.2"
         )
-        
+
         val csvLine = GarminCsvSchema.formatRecord(record)
-        
-        assertEquals("Should convert comma decimal to point", "2024-01-15,155,5,18,2,23,5", csvLine)
+
+        assertEquals("Should emit values verbatim without normalizing", "2024-01-15,155,5,18.2,23.5", csvLine)
     }
     
     @Test

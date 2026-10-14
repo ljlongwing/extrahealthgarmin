@@ -1,31 +1,8 @@
 package com.example.tefal2garmin.utils
 
-import android.util.Log
-
 class CsvFieldMapper {
-    
-    companion object {
-        private const val TAG = "CsvFieldMapper"
-        
-        // Expected Tefal column headers (primary format from Goodvibes-Dmitry)
-        private val TEFAL_HEADERS_PRIMARY = listOf(
-            "Время измерения", "Вес(кг)", "ИМТ", "Пульс(bpm)", "Процент жира(%)",
-            "Масса тела без жира(кг)", "Подкожный жир(%)", "Висцеральный жир",
-            "Вода в организме(%)", "Скелетные мышцы(%)", "Мышечная масса(кг)",
-            "Костная масса(кг)", "Белок(%)", "Величина основного обмена(kcal)", "Метаболический возраст"
-        )
 
-        // Alternative Tefal column headers (older format)
-        private val TEFAL_HEADERS_ALTERNATIVE = listOf(
-            "Дата", "Время", "Вес (кг)", "ИМТ", "Жир (% тела)", "Воды (%)", "Скелет мышц (%)",
-            "Другое", "Физическая активность (уровень)", "Примечания"
-        )
-        
-        // Target Garmin schema field names
-        private val GARMIN_FIELDS = listOf(
-            "Date", "Weight", "BMI", "Fat"
-        )
-        
+    companion object {
         // Russian month abbreviation mapping
         private val RUSSIAN_MONTHS = mapOf(
             "янв" to "01", "фев" to "02", "мар" to "03", "апр" to "04", "мая" to "05", "июн" to "06",
@@ -44,19 +21,28 @@ class CsvFieldMapper {
 
             return day <= daysInMonth
         }
-        
-        private fun normalizeWeight(weightValue: String): String {
+
+        /**
+         * Normalizes a weight value: European decimal comma to dot, surrounding whitespace trimmed.
+         */
+        fun normalizeWeight(weightValue: String): String {
             return weightValue.replace(",", ".").trim()
         }
-        
-        private fun normalizeBmi(bmiValue: String): String {
+
+        /**
+         * Normalizes a BMI value: European decimal comma to dot, surrounding whitespace trimmed.
+         */
+        fun normalizeBmi(bmiValue: String): String {
             return bmiValue.replace(",", ".").trim()
         }
-        
-        private fun normalizeFat(fatValue: String): String {
+
+        /**
+         * Normalizes a fat percentage value: European decimal comma to dot, surrounding whitespace trimmed.
+         */
+        fun normalizeFat(fatValue: String): String {
             return fatValue.replace(",", ".").trim()
         }
-        
+
         fun normalizeDate(dateValue: String): String {
             val cleanDate = dateValue.trim()
 
@@ -143,63 +129,7 @@ class CsvFieldMapper {
                 }
             }
         }
-        
-        fun createFieldMapping(csvHeaders: List<String>): Map<String, String> {
-            val mapping = mutableMapOf<String, String>()
-            val normalizedHeaders = csvHeaders.map { header ->
-                header.trim().lowercase().replace(" ", "").replace("(", "").replace(")", "")
-            }
 
-            // Determine which header format we're dealing with
-            val isPrimaryFormat = TEFAL_HEADERS_PRIMARY.any { header ->
-                csvHeaders.contains(header)
-            }
-            val tefalHeaders = if (isPrimaryFormat) TEFAL_HEADERS_PRIMARY else TEFAL_HEADERS_ALTERNATIVE
-
-            // Map Tefal headers to Garmin fields
-            GARMIN_FIELDS.forEach { garminField ->
-                when (garminField) {
-                    "Date" -> {
-                        // Date comes from "Время измерения" in primary format
-                        val dateField = if (isPrimaryFormat) "Время измерения" else "Дата"
-                        if (csvHeaders.contains(dateField)) {
-                            mapping[garminField] = dateField
-                        }
-                    }
-                    "Weight" -> {
-                        // Weight comes from "Вес(кг)" in primary format
-                        val weightField = if (isPrimaryFormat) "Вес(кг)" else "Вес (кг)"
-                        if (csvHeaders.contains(weightField)) {
-                            mapping[garminField] = weightField
-                        }
-                    }
-                    "BMI" -> {
-                        // BMI is the same in both formats
-                        if (csvHeaders.contains("ИМТ")) {
-                            mapping[garminField] = "ИМТ"
-                        }
-                    }
-                    "Fat" -> {
-                        // Fat comes from "Процент жира(%)" in primary format
-                        val fatField = if (isPrimaryFormat) "Процент жира(%)" else "Жир (% тела)"
-                        if (csvHeaders.contains(fatField)) {
-                            mapping[garminField] = fatField
-                        }
-                    }
-                }
-            }
-
-            // Add unmapped Tefal fields as "Other" (for logging purposes)
-            csvHeaders.forEach { header ->
-                if (!mapping.containsValue(header)) {
-                    mapping[header] = "Other"
-                }
-            }
-
-            Log.d(TAG, "Created field mapping for ${if (isPrimaryFormat) "primary" else "alternative"} format: $mapping")
-            return mapping
-        }
-        
         fun mapToGarminFormat(
             weightKg: String?,
             bmi: String?,
@@ -207,30 +137,15 @@ class CsvFieldMapper {
             date: String
         ): Map<String, String?> {
             val result = mutableMapOf<String, String?>()
-            
-            // Standard fields
+
+            // Standard fields (weight arrives pre-normalized from RecordProcessor)
             result["Date"] = date
-            result["Weight"] = weightKg?.let { 
-                // Convert from kg to lbs if needed (Garmin uses imperial)
-                if (it.contains("кг")) {
-                    try {
-                        val kgValue = it.replace(",", ".").trim().toFloatOrNull()
-                        kgValue?.let { kg ->
-                            val lbs = kg * 2.20462f // Convert kg to lbs
-                            String.format("%.2f", lbs)
-                        } ?: it
-                    } catch (e: Exception) {
-                        it
-                    }
-                } else {
-                    it
-                }
-            }
-            
+            result["Weight"] = weightKg
+
             // Add optional fields
             bmi?.let { result["BMI"] = it }
             fatPercentage?.let { result["Fat"] = it }
-            
+
             return result
         }
     }

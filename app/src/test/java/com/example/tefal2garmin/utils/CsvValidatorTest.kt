@@ -358,4 +358,117 @@ class CsvValidatorTest {
         assertEquals("Should detect two missing fields", 2, result.missingFields.size)
         assertEquals("Should provide two modified values", 2, result.modifiedValues.size)
     }
+
+    // Primary (Goodvibes) contract: records keyed by "Время измерения" / "Вес(кг)"
+
+    @Test
+    fun testValidateRecord_ValidPrimaryGoodvibesRecord() {
+        val record = mapOf(
+            "Время измерения" to "окт. 25, 2025 09:51:52",
+            "Вес(кг)" to "79.65",
+            "ИМТ" to "24.60",
+            "Процент жира(%)" to "21.90"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertTrue("Real Goodvibes row should be valid: ${result.message}", result.isValid)
+        assertTrue("Should have no missing fields", result.missingFields.isEmpty())
+        assertTrue("Should have no invalid fields", result.invalidFields.isEmpty())
+        assertTrue("Should have no modified values", result.modifiedValues.isEmpty())
+    }
+
+    @Test
+    fun testValidateRecord_PrimaryRecordWithIsoDate() {
+        // normalizeDate returns an already-normalized YYYY-MM-DD value unchanged,
+        // so the ISO shape itself must be accepted by the primary contract
+        val record = mapOf(
+            "Время измерения" to "2025-10-25",
+            "Вес(кг)" to "79.65"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertTrue("ISO date should be valid in the primary contract: ${result.message}", result.isValid)
+    }
+
+    @Test
+    fun testValidateRecord_PrimaryRecordWithCommaDecimalWeight() {
+        val record = mapOf(
+            "Время измерения" to "окт. 25, 2025 09:51:52",
+            "Вес(кг)" to "79,65"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertTrue("Comma-decimal weight should be valid (normalized during validation): ${result.message}", result.isValid)
+    }
+
+    @Test
+    fun testValidateRecord_PrimaryRecordWithInvalidWeight() {
+        val record = mapOf(
+            "Время измерения" to "окт. 25, 2025 09:51:52",
+            "Вес(кг)" to "-5.0"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertFalse("Record should be invalid with negative weight", result.isValid)
+        assertEquals("Should have no missing fields", 0, result.missingFields.size)
+        assertEquals("Should detect one invalid field", 1, result.invalidFields.size)
+        assertTrue("Should include invalid weight", result.invalidFields.any { it.contains("Вес(кг)") })
+        assertEquals("Should provide default weight", "0.0", result.modifiedValues["Вес(кг)"])
+    }
+
+    @Test
+    fun testValidateRecord_PrimaryWeightTooHigh() {
+        val record = mapOf(
+            "Время измерения" to "окт. 25, 2025 09:51:52",
+            "Вес(кг)" to "1500.0"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertFalse("Record should be invalid with excessively high weight", result.isValid)
+        assertEquals("Should detect one invalid field", 1, result.invalidFields.size)
+        assertTrue("Should include invalid weight", result.invalidFields.any { it.contains("Вес(кг)") })
+    }
+
+    @Test
+    fun testValidateRecord_PrimaryInvalidDate() {
+        val record = mapOf(
+            "Время измерения" to "не дата",
+            "Вес(кг)" to "79.65"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertFalse("Record should be invalid with unparseable date", result.isValid)
+        assertEquals("Should have no missing fields", 0, result.missingFields.size)
+        assertEquals("Should detect one invalid field", 1, result.invalidFields.size)
+        assertTrue("Should include invalid date", result.invalidFields.any { it.contains("Время измерения") })
+        assertEquals("Should provide one modified value", 1, result.modifiedValues.size)
+        assertTrue(
+            "Default date should be today in YYYY-MM-DD form",
+            result.modifiedValues["Время измерения"]?.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) == true
+        )
+    }
+
+    @Test
+    fun testValidateRecord_PrimaryMissingDate() {
+        val record = mapOf(
+            "Вес(кг)" to "79.65"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertFalse("Record should be invalid without a measurement date", result.isValid)
+        assertEquals("Should detect one missing field", 1, result.missingFields.size)
+        assertTrue("Should include missing date", result.missingFields.contains("Время измерения"))
+        assertEquals("Should provide one modified value", 1, result.modifiedValues.size)
+        assertTrue(
+            "Default date should be today in YYYY-MM-DD form",
+            result.modifiedValues["Время измерения"]?.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) == true
+        )
+    }
 }

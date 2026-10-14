@@ -1,20 +1,7 @@
 package com.example.tefal2garmin.utils
 
-import android.util.Log
-import java.util.regex.Pattern
-
 class CsvLineParser {
-    
-    companion object {
-        private const val TAG = "CsvLineParser"
-        
-        // Pattern to match CSV fields including quoted fields
-        private val CSV_FIELD_PATTERN = Pattern.compile(
-            // Match either: unquoted field, or quoted field (which may contain commas, quotes, and newlines)
-            "(?:^([^\",\\n\\r]*)(?=,|$)|\"((?:[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*)*)\"(?=,|$))"
-        )
-    }
-    
+
     fun parseCsvLine(line: String): List<String> {
         val fields = mutableListOf<String>()
         val currentField = StringBuilder()

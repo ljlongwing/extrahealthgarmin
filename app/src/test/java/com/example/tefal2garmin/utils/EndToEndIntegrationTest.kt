@@ -11,12 +11,11 @@ import java.io.File
  */
 class EndToEndIntegrationTest {
 
-    // Test Data Constants
-    private val validTefalHeaders = "Дата,Вес (кг),ИМТ,Жир (% тела)"
+    // Test Data Constants (primary Goodvibes format, as produced by the Tefal app)
+    private val validTefalHeaders = "Время измерения,Вес(кг),ИМТ,Процент жира(%)"
     private val validTefalData = """
-        15.01.2024,155.5,23.5,18.2
-        16.01.2024,154.75,23.4,18.1
-        17.01.2024,154.0,23.3,18.0
+        "окт. 25, 2025 09:51:52",79.65,24.60,21.90
+        "окт. 21, 2025 08:20:53",80.25,24.80,21.70
     """.trimIndent()
 
     private val invalidHeaders = "Name,Age,City"
@@ -27,10 +26,10 @@ class EndToEndIntegrationTest {
         // This is a simplified integration test that verifies the key components work together
         // Rather than testing the full file I/O pipeline, we test the core processing logic
 
-        // Arrange: Create sample records as they would be parsed
+        // Arrange: Create sample records as they would be parsed (primary Goodvibes headers)
         val sampleRecords = listOf(
-            mapOf("Дата" to "15.01.2024", "Вес (кг)" to "155.5", "ИМТ" to "23.5", "Жир (% тела)" to "18.2"),
-            mapOf("Дата" to "16.01.2024", "Вес (кг)" to "154.75", "ИМТ" to "23.4", "Жир (% тела)" to "18.1")
+            mapOf("Время измерения" to "15.01.2024", "Вес(кг)" to "155.5", "ИМТ" to "23.5", "Процент жира(%)" to "18.2"),
+            mapOf("Время измерения" to "16.01.2024", "Вес(кг)" to "154.75", "ИМТ" to "23.4", "Процент жира(%)" to "18.1")
         )
 
         // Act: Process records through the validation and transformation pipeline
@@ -78,7 +77,7 @@ class EndToEndIntegrationTest {
     fun testEndToEnd_InvalidHeaders() {
         // Arrange: Test header validation logic
         val invalidHeadersList = listOf("Name", "Age", "City")
-        val expectedHeaders = listOf("Дата", "Вес (кг)", "ИМТ", "Жир (% тела)")
+        val expectedHeaders = listOf("Время измерения", "Вес(кг)", "ИМТ", "Процент жира(%)")
 
         // Act: Check if headers are valid
         val hasAllRequiredHeaders = invalidHeadersList.containsAll(expectedHeaders)
@@ -89,34 +88,56 @@ class EndToEndIntegrationTest {
 
     @Test
     fun testEndToEnd_MissingRequiredFields() {
-        // Arrange: Create record with missing required fields
-        val incompleteRecord = mapOf("Дата" to "15.01.2024", "Вес (кг)" to "", "ИМТ" to "23.5") // Missing fat
+        // Arrange: Create record (primary Goodvibes headers) with a missing required weight
+        val incompleteRecord = mapOf(
+            "Время измерения" to "15.01.2024",
+            "Вес(кг)" to "",
+            "ИМТ" to "23.5",
+            "Процент жира(%)" to "18.2"
+        )
 
         // Act: Process the record
         val validator = CsvValidator()
         val result = RecordProcessor.processRecord(incompleteRecord, validator)
 
-        // Assert: Should handle missing fields appropriately
-        // Note: The current implementation might not fail on missing fields, but should handle them
+        // Assert: Processing succeeds, but validation reports the missing weight
+        // with a default value; the conversion passes the original blank through
         Assert.assertNotNull("Should process record", result)
-        // The exact behavior depends on the validation logic
+        Assert.assertTrue("Processing should succeed", result.success)
+        Assert.assertFalse("Validation should flag the missing weight", result.validationResult.isValid)
+        Assert.assertTrue("Weight should be reported missing", result.validationResult.missingFields.contains("Вес(кг)"))
+        Assert.assertEquals("Default weight should be reported", "0.0", result.validationResult.modifiedValues["Вес(кг)"])
+        Assert.assertEquals("Original blank weight passes through", "", result.record["Weight"])
     }
 
     @Test
     fun testEndToEnd_InvalidDateFormat() {
-        // Arrange: Create record with invalid date format
-        val invalidRecord = mapOf("Дата" to "99.99.9999", "Вес (кг)" to "155.5", "ИМТ" to "23.5", "Жир (% тела)" to "18.2")
+        // Arrange: Create record with a date normalization cannot parse
+        val invalidRecord = mapOf(
+            "Время измерения" to "99.99.9999",
+            "Вес(кг)" to "155.5",
+            "ИМТ" to "23.5",
+            "Процент жира(%)" to "18.2"
+        )
 
         // Act: Process the record
         val validator = CsvValidator()
         val result = RecordProcessor.processRecord(invalidRecord, validator)
 
-        // Assert: Should handle invalid date (may succeed but with fallback behavior)
+        // Assert: Processing succeeds; validation reports the invalid date with a
+        // today-default, and the unparseable date passes through unchanged
         Assert.assertNotNull("Should process record", result)
-        // The date normalization might return the original invalid date if it can't parse it
-        val garminRecord = result.record
-        Assert.assertNotNull("Should have garmin record", garminRecord)
-        // Invalid dates might be passed through unchanged or with default values
+        Assert.assertTrue("Processing should succeed", result.success)
+        Assert.assertFalse("Unparseable date should fail validation", result.validationResult.isValid)
+        Assert.assertTrue(
+            "Date should be reported invalid",
+            result.validationResult.invalidFields.any { it.contains("Время измерения") }
+        )
+        Assert.assertTrue(
+            "Default (today) date should be reported",
+            result.validationResult.modifiedValues["Время измерения"]?.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) == true
+        )
+        Assert.assertEquals("Unparseable date passes through unchanged", "99.99.9999", result.record["Date"])
     }
 
     @Test
@@ -135,9 +156,9 @@ class EndToEndIntegrationTest {
 
     @Test
     fun testEndToEnd_LargeFile() {
-        // Arrange: Create multiple records to test batch processing
+        // Arrange: Create multiple records (primary Goodvibes headers) to test batch processing
         val records = (1..10).map { index ->
-            mapOf("Дата" to "15.01.2024", "Вес (кг)" to "${155.5 + index * 0.1}", "ИМТ" to "23.5", "Жир (% тела)" to "18.2")
+            mapOf("Время измерения" to "15.01.2024", "Вес(кг)" to "${155.5 + index * 0.1}", "ИМТ" to "23.5", "Процент жира(%)" to "18.2")
         }
 
         // Act: Process multiple records

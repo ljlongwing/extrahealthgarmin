@@ -1,9 +1,7 @@
 package com.example.tefal2garmin.utils
 
 import android.util.Log
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -34,6 +32,9 @@ class CsvValidator {
         
         // UTF-8 BOM signature
         private val UTF8_BOM = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+
+        // Already-normalized ISO date (YYYY-MM-DD) — the target shape of CsvFieldMapper.normalizeDate
+        private val ISO_DATE_REGEX = Regex("""\d{4}-\d{2}-\d{2}""")
     }
     
     fun validateEncoding(inputStream: InputStream): EncodingValidationResult {
@@ -231,22 +232,34 @@ class CsvValidator {
         val missingFields = mutableListOf<String>()
         val invalidFields = mutableListOf<String>()
         val modifiedValues = mutableMapOf<String, String>()
-        
+
+        // Production Goodvibes rows are keyed by the primary headers ("Время измерения",
+        // "Вес(кг)"), older exports by the alternative ones ("Дата", "Вес (кг)").
+        // Detect the contract from the keys the record actually carries.
+        val isPrimaryFormat = record.containsKey("Время измерения") || record.containsKey("Вес(кг)")
+
         // Check required fields and their formats
-        val requiredFields = mapOf(
-            "Дата" to "date",
-            "Вес (кг)" to "weight"
-        )
-        
+        val requiredFields = if (isPrimaryFormat) {
+            mapOf(
+                "Время измерения" to "date",
+                "Вес(кг)" to "weight"
+            )
+        } else {
+            mapOf(
+                "Дата" to "date",
+                "Вес (кг)" to "weight"
+            )
+        }
+
         requiredFields.forEach { (russianHeader, fieldName) ->
             val value = record[russianHeader]
-            
+
             when {
                 value.isNullOrBlank() -> {
                     missingFields.add(russianHeader)
                     modifiedValues[russianHeader] = getDefaultForField(fieldName)
                 }
-                fieldName == "date" && !isValidDate(value) -> {
+                fieldName == "date" && !isValidDate(value, isPrimaryFormat) -> {
                     invalidFields.add("$russianHeader (invalid date format)")
                     modifiedValues[russianHeader] = getDefaultForField(fieldName)
                 }
@@ -256,12 +269,19 @@ class CsvValidator {
                 }
             }
         }
-        
+
         // Check optional fields (BMI, Fat)
-        val optionalFields = mapOf(
-            "ИМТ" to "bmi",
-            "Жир (% тела)" to "fat"
-        )
+        val optionalFields = if (isPrimaryFormat) {
+            mapOf(
+                "ИМТ" to "bmi",
+                "Процент жира(%)" to "fat"
+            )
+        } else {
+            mapOf(
+                "ИМТ" to "bmi",
+                "Жир (% тела)" to "fat"
+            )
+        }
         
         optionalFields.forEach { (russianHeader, fieldName) ->
             val value = record[russianHeader]
@@ -299,6 +319,20 @@ class CsvValidator {
         )
     }
     
+    /**
+     * Dispatches date validation per contract. The primary (Goodvibes) contract accepts any
+     * date [CsvFieldMapper.normalizeDate] can rewrite to YYYY-MM-DD (including values that
+     * are already in that shape); the alternative contract uses the fixed pattern list below.
+     */
+    private fun isValidDate(dateString: String, isPrimaryFormat: Boolean): Boolean {
+        if (isPrimaryFormat) {
+            return dateString.matches(ISO_DATE_REGEX) ||
+                CsvFieldMapper.normalizeDate(dateString) != dateString
+        }
+        return isValidDate(dateString)
+    }
+
+    // Alternative (older export) contract: fixed set of supported date patterns
     private fun isValidDate(dateString: String): Boolean {
         val formats = listOf(
             "yyyy-MM-dd",
@@ -306,7 +340,7 @@ class CsvValidator {
             "dd/MM/yyyy",
             "MM/dd/yyyy"
         )
-        
+
         return formats.any { format ->
             try {
                 val sdf = SimpleDateFormat(format, Locale.getDefault())
