@@ -94,3 +94,6 @@ browser-profile/
 
 # Git
 *.orig
+
+# Serena MCP local state
+.serena/
