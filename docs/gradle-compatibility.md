@@ -80,3 +80,25 @@ The recommendation above is obsolete. The build now runs on the AGP 9.x line:
 - SDK (at `~/Library/Android/sdk`, see `local.properties`): cmdline-tools + `platforms;android-34` + `build-tools;36.0.0`, licenses accepted.
 - `gradle.properties` reduced to `android.useAndroidX`, `android.enableJetifier`, `org.gradle.jvmargs`; all Java-25-era Kotlin workarounds removed.
 - Verified: `help` / `assembleDebug` / `lintDebug` green; `testDebugUnitTest` compiles and runs 107 tests (2 pre-existing assertion failures in `GarminCsvGeneratorTest`, unrelated to the toolchain).
+## Deprecation sweep (2026-10-14): Gradle 10 compatibility
+
+Ran `./gradlew clean assembleDebug --warning-mode all` and fixed every script-owned
+deprecation. The "Deprecated Gradle features were used in this build" footer is now **gone**
+(verified on a full clean rebuild):
+
+| Warning | Origin | Action |
+|---|---|---|
+| `android.enableJetifier=true` is deprecated, default `false`, removed in AGP 10.0 | `gradle.properties` | **Fixed** — flag removed; project has no support-lib leftovers, builds unchanged |
+| Groovy space assignment `namespace '...'` (removed in Gradle 10) | `app/build.gradle` line 6 | **Fixed** — `namespace = 'com.example.tefal2garmin'` |
+| Groovy space assignment `signingConfig signingConfigs.release` (removed in Gradle 10) | `app/build.gradle` line 31 | **Fixed** — `signingConfig = signingConfigs.release` |
+
+**Upstream (AGP-internal) deprecations: none.** AGP 9.4.1 under Gradle 9.6.0 /
+JDK 26 emits no plugin-owned Gradle deprecations, so nothing to track for the AGP 10 era.
+
+One remaining `deprecat` match in the build log is *not* a Gradle deprecation: a Kotlin
+compiler warning (`w:`) for the Android framework API `getParcelableExtra` in
+`app/src/main/java/com/example/tefal2garmin/utils/MimeTypeValidator.kt` — an app-source
+SDK-level deprecation that does not affect Gradle 10 compatibility.
+
+Post-fix verification: `clean assembleDebug --warning-mode all` → 0 Gradle deprecations,
+no footer; `testDebugUnitTest` → 107/107 green; `lintDebug` → BUILD SUCCESSFUL.
