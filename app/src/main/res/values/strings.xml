@@ -65,4 +65,22 @@
     <string name="status_validating_headers">Validating headers...</string>
     <string name="status_processing_records">Processing records...</string>
     <string name="status_generating_csv">Generating Garmin CSV...</string>
+
+    <!-- Garmin API Upload & Login -->
+    <string name="connect_garmin">Connect Garmin</string>
+    <string name="garmin_connected">Garmin connected</string>
+    <string name="login_title">Sign in to Garmin</string>
+    <string name="login_email_hint">Email</string>
+    <string name="login_password_hint">Password</string>
+    <string name="mfa_code_hint">Verification code</string>
+    <string name="login_submit">Sign in</string>
+    <string name="login_cancel">Cancel</string>
+    <string name="resend_code">Resend code</string>
+    <string name="login_required">Sign in to Garmin to upload measurements automatically</string>
+    <string name="login_failed">Sign-in failed: %1$s</string>
+    <string name="upload_in_progress">Uploading to Garmin Connect...</string>
+    <string name="upload_success">Uploaded %1$d measurements to Garmin Connect</string>
+    <string name="upload_not_needed">All measurements are already in Garmin Connect — nothing to upload</string>
+    <string name="upload_partial">Uploaded %1$d measurements; %2$d saved to a CSV file for manual import</string>
+    <string name="upload_fallback">Automatic upload is unavailable: %1$d measurements saved to a CSV file for manual import</string>
 </resources>

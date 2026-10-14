@@ -9,11 +9,16 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.provider.OpenableColumns
 import android.util.Log
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.webkit.WebView
 import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -22,12 +27,13 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import java.io.File
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
-import com.example.tefal2garmin.data.FileInfo
 import com.example.tefal2garmin.data.CsvProcessingResult
+import com.example.tefal2garmin.ui.GarminUploadStatus
 import com.example.tefal2garmin.ui.MainUiState
 import com.example.tefal2garmin.ui.MainViewModel
 import com.example.tefal2garmin.ui.MainViewModelFactory
@@ -38,10 +44,9 @@ import com.example.tefal2garmin.garmin.LoginResult
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.text.DecimalFormat
 
 class MainActivity : AppCompatActivity() {
-    
+
     // UI Components
     private lateinit var welcomeText: TextView
     private lateinit var instructionsText: TextView
@@ -50,43 +55,62 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var helpButton: Button
     private lateinit var tryAgainButton: Button
-    
+
+    // Garmin connection entry point (task tefal2garmin-garmin-api-import-j5e.4).
+    // Created programmatically — the layout file stays untouched; the views are
+    // constrained into the existing ConstraintLayout below tryAgainButton.
+    private lateinit var connectGarminButton: Button
+    private lateinit var garminConnectedText: TextView
+
+    // Login dialog (AlertDialog + programmatic custom view, no fragments)
+    private var loginDialog: AlertDialog? = null
+    private lateinit var loginEmailInput: EditText
+    private lateinit var loginPasswordInput: EditText
+    private lateinit var loginMfaInput: EditText
+    private lateinit var loginErrorText: TextView
+
+    // Guards so repeated LiveData emissions never re-trigger one-shot actions
+    // (residual save / dialog lifecycle) — see renderUploadOutcome/renderLoginDialog
+    private var lastResidualSaveKey: String? = null
+    private var lastShowLoginDialog = false
+    private var lastGarminConnected = false
+
     // ViewModel
     private val viewModel: MainViewModel by viewModels {
         MainViewModelFactory(application)
     }
-    
+
     // SAF launcher for Downloads folder
 
-    
+
     companion object {
         private const val TAG = "MainActivity"
         private const val STORAGE_PERMISSION_REQUEST_CODE = 1001
     }
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        
+
         initializeViews()
 
         observeViewModel()
-        
+
         // Handle share intent
         handleIntent(intent)
     }
-    
+
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         handleIntent(intent)
     }
-    
+
     private fun observeViewModel() {
         viewModel.uiState.observe(this, Observer { state ->
             updateUI(state)
         })
     }
-    
+
     private fun updateUI(state: MainUiState) {
         when {
             state.showInitial -> {
@@ -97,8 +121,7 @@ class MainActivity : AppCompatActivity() {
             }
             state.showSuccess -> {
                 state.processingResult?.let { result ->
-                    // Automatically save file and open Garmin Connect
-                    autoSaveAndOpenGarmin(result)
+                    showSuccessState(result)
                 }
             }
             state.showError -> {
@@ -107,26 +130,32 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        
+
         // Update status message
         if (state.statusMessage.isNotEmpty()) {
             statusText.text = state.statusMessage
         }
-        
+
         // Update file info if available
         state.fileInfo?.let { fileInfo ->
             welcomeText.text = getString(R.string.file_received, fileInfo.fileName)
             statusText.text = getString(R.string.file_size_status, formatFileSize(fileInfo.fileSize))
         }
-        
+
         // Show help button in appropriate states
         helpButton.visibility = when {
             state.showError -> View.VISIBLE
             state.showSuccess -> View.VISIBLE
             else -> View.INVISIBLE
         }
+
+        // Garmin upload/login rendering — after the blocks above so upload
+        // status text wins over the generic status/file-info messages
+        renderGarminConnection(state)
+        renderUploadOutcome(state)
+        renderLoginDialog(state)
     }
-    
+
     private fun initializeViews() {
         welcomeText = findViewById(R.id.welcomeText)
         instructionsText = findViewById(R.id.instructionsText)
@@ -135,17 +164,19 @@ class MainActivity : AppCompatActivity() {
 
         helpButton = findViewById(R.id.helpButton)
         tryAgainButton = findViewById(R.id.tryAgainButton)
-        
+
         // Set button click listeners
         // openGarminButton click listener removed - auto-open now
-        
+
         helpButton.setOnClickListener {
             showHelpDialog()
         }
-        
+
         tryAgainButton.setOnClickListener {
             viewModel.resetToInitialState()
         }
+
+        addGarminConnectionViews()
 
         // Debug-only live-spike trigger for the Garmin DI OAuth2 auth client
         // (task tefal2garmin-garmin-api-import-j5e.1): hidden long-press on the
@@ -171,6 +202,130 @@ class MainActivity : AppCompatActivity() {
         }
 
         // resultText click listener removed - auto-save now
+    }
+
+    /**
+     * Builds the "Connect Garmin" entry point in code (the XML layout is out of
+     * scope for this task): an outlined button when no token is stored, and a
+     * connected-status label once the ViewModel reports a stored token.
+     */
+    private fun addGarminConnectionViews() {
+        val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ConstraintLayout
+
+        connectGarminButton = Button(
+            this, null,
+            com.google.android.material.R.attr.materialButtonOutlinedStyle
+        ).apply {
+            id = View.generateViewId()
+            text = getString(R.string.connect_garmin)
+            setOnClickListener { showLoginDialog() }
+        }
+        val buttonParams = ConstraintLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topToBottom = tryAgainButton.id
+            startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+            endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+            topMargin = dp(16)
+        }
+        root.addView(connectGarminButton, buttonParams)
+
+        garminConnectedText = TextView(this).apply {
+            id = View.generateViewId()
+            text = getString(R.string.garmin_connected)
+            gravity = Gravity.CENTER
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+            visibility = View.GONE
+        }
+        val labelParams = ConstraintLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topToBottom = connectGarminButton.id
+            startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+            endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+            topMargin = dp(8)
+        }
+        root.addView(garminConnectedText, labelParams)
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    /** Button vs connected-label visibility follows the stored-token state. */
+    private fun renderGarminConnection(state: MainUiState) {
+        connectGarminButton.visibility = if (state.garminConnected) View.GONE else View.VISIBLE
+        garminConnectedText.visibility = if (state.garminConnected) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Maps the ViewModel upload status to status strings and drives the
+     * residual-CSV fallback: Success/NotNeeded produce NO Downloads file and
+     * NO browser; Partial/Fallback hand the residual CSV to the existing
+     * save+open machinery.
+     */
+    private fun renderUploadOutcome(state: MainUiState) {
+        val status = state.uploadStatus
+        if (status == null) {
+            // No upload pipeline for this result (csvData was never generated):
+            // preserve the pre-API behavior — save the file and open Garmin
+            // Connect. The transient emission before the UPLOADING status has
+            // a non-null processingResult.csvData and never reaches here.
+            if (state.showSuccess && state.processingResult?.csvData == null) {
+                legacyAutoSaveAndOpen()
+            }
+            return
+        }
+        when (status) {
+            GarminUploadStatus.UPLOADING ->
+                statusText.text = getString(R.string.upload_in_progress)
+            GarminUploadStatus.SUCCESS ->
+                statusText.text = getString(R.string.upload_success, state.uploadedCount)
+            GarminUploadStatus.NOT_NEEDED ->
+                statusText.text = getString(R.string.upload_not_needed)
+            GarminUploadStatus.PARTIAL -> {
+                statusText.text = buildString {
+                    append(getString(R.string.upload_partial, state.uploadedCount, state.residualCount))
+                    state.uploadMessages.filter { it.isNotBlank() }.forEach {
+                        append("\n").append(it)
+                    }
+                }
+                saveResidualIfNeeded(state)
+            }
+            GarminUploadStatus.FALLBACK -> {
+                statusText.text = buildString {
+                    append(getString(R.string.upload_fallback, state.residualCount))
+                    state.uploadMessages.filter { it.isNotBlank() }.forEach {
+                        append("\n").append(it)
+                    }
+                }
+                saveResidualIfNeeded(state)
+            }
+            GarminUploadStatus.LOGIN_REQUIRED ->
+                statusText.text = getString(R.string.login_required)
+        }
+    }
+
+    /** Saves the residual CSV once per conversion outcome ( Downloads + browser ). */
+    private fun saveResidualIfNeeded(state: MainUiState) {
+        val residualCsv = state.residualCsv ?: return
+        val fileName = viewModel.getOutputFileName() ?: return
+        val saveKey = "$fileName:${state.uploadStatus}:${state.residualCount}:${residualCsv.hashCode()}"
+        if (saveKey == lastResidualSaveKey) return
+        lastResidualSaveKey = saveKey
+        saveFileAutomatically(residualCsv, fileName)
+    }
+
+    /** Pre-API behavior kept for results that never enter the upload pipeline. */
+    private fun legacyAutoSaveAndOpen() {
+        val csvData = viewModel.getCsvData()
+        if (csvData == null) {
+            statusText.text = getString(R.string.no_data_available)
+            return
+        }
+        val fileName = viewModel.getOutputFileName()
+            ?: "garmin_weight_data_${System.currentTimeMillis()}.csv"
+        saveFileAutomatically(csvData, fileName)
     }
 
     /**
@@ -217,9 +372,9 @@ class MainActivity : AppCompatActivity() {
             "di_token.length=${tokens.diToken.length}, " +
             "di_refresh_token.length=${tokens.diRefreshToken.length}")
     }
-    
 
-    
+
+
     private fun handleIntent(intent: Intent?) {
         Log.d(TAG, "Handling intent: ${intent?.action}")
 
@@ -290,17 +445,17 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(getString(R.string.dialog_ok), null)
             .show()
     }
-    
+
     private fun checkAndRequestPermissions(): Boolean {
         // For Android 13+ (API 33+) no storage permission needed for content URIs
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             return true
         }
-        
+
         // For older versions, check READ_EXTERNAL_STORAGE permission
         val permission = Manifest.permission.READ_EXTERNAL_STORAGE
         val hasPermission = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-        
+
         return if (!hasPermission) {
             ActivityCompat.requestPermissions(
                 this,
@@ -312,14 +467,14 @@ class MainActivity : AppCompatActivity() {
             true
         }
     }
-    
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        
+
         when (requestCode) {
             STORAGE_PERMISSION_REQUEST_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -332,7 +487,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    
+
     private fun showInitialState() {
         welcomeText.visibility = View.VISIBLE
         instructionsText.visibility = View.VISIBLE
@@ -341,7 +496,7 @@ class MainActivity : AppCompatActivity() {
         helpButton.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.INVISIBLE
     }
-    
+
     private fun showProcessingState() {
         welcomeText.visibility = View.VISIBLE
         instructionsText.visibility = View.VISIBLE
@@ -350,8 +505,8 @@ class MainActivity : AppCompatActivity() {
         helpButton.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.INVISIBLE
     }
-    
-    private fun autoSaveAndOpenGarmin(result: CsvProcessingResult) {
+
+    private fun showSuccessState(result: CsvProcessingResult) {
         welcomeText.visibility = View.INVISIBLE
         instructionsText.text = getString(R.string.success_file_processed)
         statusText.text = String.format(getString(R.string.success_records_summary), result.recordsProcessed, result.recordsGenerated)
@@ -359,39 +514,30 @@ class MainActivity : AppCompatActivity() {
         progressBar.visibility = View.INVISIBLE
         helpButton.visibility = View.VISIBLE
         tryAgainButton.visibility = View.VISIBLE
-
-        // Automatically save the file and open Garmin Connect
-        saveFileAutomatically(result)
+        // No unconditional save/browser here anymore — renderUploadOutcome
+        // decides between the API-upload outcome and the residual CSV path.
     }
 
-    private fun saveFileAutomatically(result: CsvProcessingResult) {
-        // Generate filename
-        val fileName = viewModel.getOutputFileName() ?: "garmin_weight_data_${System.currentTimeMillis()}.csv"
-
+    /**
+     * Writes [content] to the public Downloads directory as [fileName] and, on
+     * success, opens Garmin Connect after the usual 1.5 s pause. Refactored to
+     * take explicit content+filename so the residual-CSV fallback can reuse it.
+     */
+    private fun saveFileAutomatically(content: String, fileName: String) {
         // Create file in Downloads directory automatically
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val outputFile = File(downloadsDir, fileName)
 
         try {
-            // Get CSV data
-            val csvData = viewModel.getCsvData()
-            if (csvData != null) {
-                // Write file
-                outputFile.writeText(csvData, Charsets.UTF_8)
+            outputFile.writeText(content, Charsets.UTF_8)
 
-                Log.d(TAG, "File automatically saved to: ${outputFile.absolutePath}")
-                runOnUiThread {
-                    statusText.text = getString(R.string.file_saved_auto, fileName)
-                    // Automatically open Garmin Connect after a short delay
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        openGarminConnect()
-                    }, 1500) // 1.5 second delay to show the success message
-                }
-            } else {
-                Log.e(TAG, "No CSV data available to save")
-                runOnUiThread {
-                    statusText.text = getString(R.string.no_data_available)
-                }
+            Log.d(TAG, "File automatically saved to: ${outputFile.absolutePath}")
+            runOnUiThread {
+                statusText.text = getString(R.string.file_saved_auto, fileName)
+                // Automatically open Garmin Connect after a short delay
+                Handler(Looper.getMainLooper()).postDelayed({
+                    openGarminConnect()
+                }, 1500) // 1.5 second delay to show the success message
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to auto-save file", e)
@@ -414,7 +560,112 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-    
+
+    /**
+     * Owns the login AlertDialog lifecycle across LiveData emissions: opens it
+     * when the ViewModel asks (upload hit LoginRequired or the Connect button
+     * was tapped), updates the MFA field / inline error in place, and closes
+     * it when the ViewModel reports a closed dialog or a successful login.
+     */
+    private fun renderLoginDialog(state: MainUiState) {
+        val closeDueToState =
+            (lastShowLoginDialog && !state.showLoginDialog) ||
+                (state.garminConnected && !lastGarminConnected)
+        if (closeDueToState && loginDialog?.isShowing == true) {
+            loginDialog?.dismiss()
+            loginDialog = null
+        }
+
+        // Drop stale references (user dismissed via back/outside touch)
+        if (loginDialog != null && loginDialog?.isShowing != true) {
+            loginDialog = null
+        }
+
+        if (state.showLoginDialog && loginDialog?.isShowing != true) {
+            showLoginDialog()
+        }
+
+        lastShowLoginDialog = state.showLoginDialog
+        lastGarminConnected = state.garminConnected
+
+        val dialog = loginDialog ?: return
+        loginMfaInput.visibility = if (state.loginNeedsMfa) View.VISIBLE else View.GONE
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.visibility =
+            if (state.loginNeedsMfa) View.VISIBLE else View.GONE
+        loginErrorText.text = state.loginError
+            ?.let { getString(R.string.login_failed, it) }
+            ?: ""
+        loginErrorText.visibility = if (state.loginError == null) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * Login dialog: email + password, then a verification-code field once the
+     * ViewModel reports NeedsMfa. Credentials live only in the dialog's own
+     * input fields and go straight into the login call — nothing is stored.
+     */
+    private fun showLoginDialog() {
+        val padding = dp(20)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, padding / 2, padding, 0)
+        }
+        loginEmailInput = EditText(this).apply {
+            hint = getString(R.string.login_email_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        }
+        loginPasswordInput = EditText(this).apply {
+            hint = getString(R.string.login_password_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = PasswordTransformationMethod()
+        }
+        loginMfaInput = EditText(this).apply {
+            hint = getString(R.string.mfa_code_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            visibility = View.GONE
+        }
+        loginErrorText = TextView(this).apply {
+            visibility = View.GONE
+        }
+        container.addView(loginEmailInput)
+        container.addView(loginPasswordInput)
+        container.addView(loginMfaInput)
+        container.addView(loginErrorText)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.login_title))
+            .setView(container)
+            .setPositiveButton(getString(R.string.login_submit), null)
+            .setNeutralButton(getString(R.string.resend_code), null)
+            .setNegativeButton(getString(R.string.login_cancel), null)
+            .setOnCancelListener { viewModel.onLoginCancelled() }
+            .create()
+        dialog.show()
+
+        // Custom click listeners (installed after show()) replace the default
+        // dismiss-on-click so NeedsMfa/Failed keep the dialog open with the
+        // entered credentials intact.
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val mfaCode = loginMfaInput.text.toString().trim().takeIf { it.isNotEmpty() }
+            viewModel.loginToGarmin(
+                loginEmailInput.text.toString().trim(),
+                loginPasswordInput.text.toString(),
+                mfaCode
+            )
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            // Resend = re-run login with the same credentials and no code
+            viewModel.loginToGarmin(
+                loginEmailInput.text.toString().trim(),
+                loginPasswordInput.text.toString(),
+                null
+            )
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+            dialog.cancel() // fires the cancel listener -> onLoginCancelled
+        }
+        loginDialog = dialog
+    }
+
     private fun showErrorState(message: String) {
         Log.e(TAG, "Error occurred: $message")
 
@@ -425,10 +676,10 @@ class MainActivity : AppCompatActivity() {
         progressBar.visibility = View.INVISIBLE
         tryAgainButton.visibility = View.VISIBLE
     }
-    
+
     private fun showHelpDialog() {
         val helpContent = getString(R.string.help_content)
-        
+
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.help_title))
             .setMessage(helpContent)
@@ -440,7 +691,7 @@ class MainActivity : AppCompatActivity() {
             }
             .show()
     }
-    
+
     private fun openTroubleshootingGuide() {
         try {
             val guideText = assets.open("docs/complete-troubleshooting-guide.md")
@@ -478,9 +729,8 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, getString(R.string.toast_help_open_failed), Toast.LENGTH_SHORT).show()
         }
     }
-    
 
-    
+
     private fun formatFileSize(bytes: Long): String {
         val kb = bytes / 1024.0
         val mb = kb / 1024.0
@@ -490,7 +740,7 @@ class MainActivity : AppCompatActivity() {
             else -> "$bytes bytes"
         }
     }
-    
+
     @Suppress("DEPRECATION")
     private fun <T> getParcelableExtraCompat(intent: Intent, name: String, clazz: Class<T>): T? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

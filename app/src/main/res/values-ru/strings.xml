@@ -65,4 +65,22 @@
     <string name="status_validating_headers">Проверка заголовков...</string>
     <string name="status_processing_records">Обработка записей...</string>
     <string name="status_generating_csv">Создание CSV Garmin...</string>
+
+    <!-- Garmin API Upload & Login -->
+    <string name="connect_garmin">Подключить Garmin</string>
+    <string name="garmin_connected">Garmin подключен</string>
+    <string name="login_title">Вход в Garmin</string>
+    <string name="login_email_hint">Электронная почта</string>
+    <string name="login_password_hint">Пароль</string>
+    <string name="mfa_code_hint">Код подтверждения</string>
+    <string name="login_submit">Войти</string>
+    <string name="login_cancel">Отмена</string>
+    <string name="resend_code">Отправить код повторно</string>
+    <string name="login_required">Войдите в Garmin, чтобы загружать измерения автоматически</string>
+    <string name="login_failed">Не удалось войти: %1$s</string>
+    <string name="upload_in_progress">Загрузка в Garmin Connect...</string>
+    <string name="upload_success">Загружено измерений в Garmin Connect: %1$d</string>
+    <string name="upload_not_needed">Все измерения уже в Garmin Connect — загружать нечего</string>
+    <string name="upload_partial">Загружено измерений: %1$d; еще %2$d сохранено в CSV файл для ручного импорта</string>
+    <string name="upload_fallback">Автоматическая загрузка недоступна: %1$d измерений сохранено в CSV файл для ручного импорта</string>
 </resources>

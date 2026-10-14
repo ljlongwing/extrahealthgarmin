@@ -14,9 +14,31 @@ import kotlinx.coroutines.launch
 import com.example.tefal2garmin.data.FileInfo
 import com.example.tefal2garmin.data.FileRepository
 import com.example.tefal2garmin.data.CsvProcessingResult
+import com.example.tefal2garmin.data.GarminRepository
+import com.example.tefal2garmin.data.GarminUploadOrchestrator
+import com.example.tefal2garmin.data.LoginStatus
+import com.example.tefal2garmin.data.UploadOutcome
 import com.example.tefal2garmin.utils.CsvReader
 import com.example.tefal2garmin.utils.CsvValidator
-import kotlinx.coroutines.launch
+
+/**
+ * Semantic post-conversion upload status. MainActivity maps each value to an
+ * R.string — the ViewModel never formats user-visible text itself.
+ */
+enum class GarminUploadStatus {
+    /** An upload request is in flight. */
+    UPLOADING,
+    /** All new records were uploaded via the API. */
+    SUCCESS,
+    /** Nothing new to upload — everything is already on Garmin. */
+    NOT_NEEDED,
+    /** Some records uploaded; the remainder was written to a residual CSV. */
+    PARTIAL,
+    /** API upload impossible; the full remainder went to the residual CSV. */
+    FALLBACK,
+    /** No stored token — the user must sign in before uploading. */
+    LOGIN_REQUIRED
+}
 
 data class MainUiState(
     val isLoading: Boolean = false,
@@ -26,26 +48,43 @@ data class MainUiState(
     val error: String? = null,
     val showSuccess: Boolean = false,
     val showError: Boolean = false,
-    val showInitial: Boolean = true
+    val showInitial: Boolean = true,
+    // Garmin API upload integration (task tefal2garmin-garmin-api-import-j5e.4)
+    val garminConnected: Boolean = false,
+    val uploadStatus: GarminUploadStatus? = null,
+    val uploadedCount: Int = 0,
+    val residualCsv: String? = null,
+    val residualCount: Int = 0,
+    val uploadMessages: List<String> = emptyList(),
+    val showLoginDialog: Boolean = false,
+    val loginNeedsMfa: Boolean = false,
+    val loginError: String? = null
 )
 
 class MainViewModel(
     private val fileRepository: FileRepository,
+    private val garminUploader: GarminUploadOrchestrator,
     application: Application
 ) : AndroidViewModel(application) {
-    
+
     companion object {
         private const val TAG = "MainViewModel"
         private const val GARMIN_CONNECT_URL = "https://connect.garmin.com/modern/import-data"
     }
-    
+
     private val _uiState = MutableLiveData<MainUiState>()
     val uiState: LiveData<MainUiState> = _uiState
-    
+
+    /**
+     * CSV payload of the conversion whose upload is pending (awaiting login or
+     * in flight). Never holds credentials — only the converted data.
+     */
+    private var pendingUploadCsv: String? = null
+
     init {
-        _uiState.value = MainUiState()
+        _uiState.value = MainUiState(garminConnected = garminUploader.hasStoredToken())
     }
-    
+
     fun handleShareIntent(uri: Uri?) {
         if (uri != null) {
             processFile(uri)
@@ -53,9 +92,9 @@ class MainViewModel(
             updateState { it.copy(showInitial = true) }
         }
     }
-    
+
     fun handleTextShare(text: String) {
-        updateState { 
+        updateState {
             it.copy(
                 statusMessage = "Processing text content (${text.length} chars)...",
                 isLoading = true,
@@ -64,7 +103,7 @@ class MainViewModel(
         }
         // In a real implementation, we might process the text content
         // For now, we'll just show an error
-        updateState { 
+        updateState {
             it.copy(
                 isLoading = false,
                 error = "Text sharing not supported. Please share a CSV file.",
@@ -72,39 +111,48 @@ class MainViewModel(
             )
         }
     }
-    
+
     private fun processFile(uri: Uri) {
-        updateState { 
+        pendingUploadCsv = null
+        updateState {
             it.copy(
                 isLoading = true,
                 showInitial = false,
                 showError = false,
                 showSuccess = false,
-                error = null
+                error = null,
+                uploadStatus = null,
+                uploadedCount = 0,
+                residualCsv = null,
+                residualCount = 0,
+                uploadMessages = emptyList(),
+                showLoginDialog = false,
+                loginNeedsMfa = false,
+                loginError = null
             )
         }
-        
+
         viewModelScope.launch {
             try {
                 // Get file info first
                 val fileInfo = fileRepository.getFileInfo(uri)
-                updateState { 
+                updateState {
                     it.copy(
                         fileInfo = fileInfo,
                         statusMessage = "Preparing to process ${fileInfo.fileName}..."
                     )
                 }
-                
+
                 // Process the CSV file
                 val result = fileRepository.processCsvFile(uri) { progress ->
                     viewModelScope.launch(Dispatchers.Main) {
                         updateState { it.copy(statusMessage = progress) }
                     }
                 }
-                
+
                 result.fold(
                     onSuccess = { processingResult ->
-                        updateState { 
+                        updateState {
                             it.copy(
                                 isLoading = false,
                                 processingResult = processingResult,
@@ -112,10 +160,15 @@ class MainViewModel(
                                 statusMessage = "File processed successfully!"
                             )
                         }
+                        // Epic requirement 5: conversion success no longer saves
+                        // a Downloads file or opens the browser unconditionally —
+                        // the Garmin API is tried first and the residual CSV is
+                        // produced only when the API path cannot take everything.
+                        startGarminUpload(processingResult)
                     },
                     onFailure = { exception ->
                         Log.e(TAG, "Error processing file", exception)
-                        updateState { 
+                        updateState {
                             it.copy(
                                 isLoading = false,
                                 error = exception.message ?: "Unknown error occurred",
@@ -124,10 +177,10 @@ class MainViewModel(
                         }
                     }
                 )
-                
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error in processFile", e)
-                updateState { 
+                updateState {
                     it.copy(
                         isLoading = false,
                         error = e.message ?: "Unknown error occurred",
@@ -137,19 +190,157 @@ class MainViewModel(
             }
         }
     }
-    
+
+    /**
+     * Runs the upload pipeline for a finished conversion. LoginRequired keeps
+     * the CSV in [pendingUploadCsv] so a successful dialog login can retry
+     * once with exactly the same payload.
+     */
+    private fun startGarminUpload(result: CsvProcessingResult) {
+        val csvData = result.csvData ?: return // nothing generated — legacy save path
+        pendingUploadCsv = csvData
+        updateState { it.copy(uploadStatus = GarminUploadStatus.UPLOADING) }
+        viewModelScope.launch { performUpload(csvData) }
+    }
+
+    private suspend fun performUpload(csvData: String) {
+        try {
+            handleUploadOutcome(garminUploader.uploadNewFromCsv(csvData))
+        } catch (e: Exception) {
+            Log.e(TAG, "Garmin upload failed", e)
+            fallbackToResidualCsv(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    private fun handleUploadOutcome(outcome: UploadOutcome) {
+        when (outcome) {
+            is UploadOutcome.NotNeeded -> updateState {
+                it.copy(uploadStatus = GarminUploadStatus.NOT_NEEDED)
+            }
+            is UploadOutcome.Success -> updateState {
+                it.copy(
+                    uploadStatus = GarminUploadStatus.SUCCESS,
+                    uploadedCount = outcome.uploadedCount
+                )
+            }
+            is UploadOutcome.Partial -> updateState {
+                it.copy(
+                    uploadStatus = GarminUploadStatus.PARTIAL,
+                    uploadedCount = outcome.uploadedCount,
+                    residualCsv = outcome.residualCsv,
+                    residualCount = outcome.residualCount,
+                    uploadMessages = outcome.messages
+                )
+            }
+            is UploadOutcome.Fallback -> updateState {
+                it.copy(
+                    uploadStatus = GarminUploadStatus.FALLBACK,
+                    residualCsv = outcome.residualCsv,
+                    residualCount = outcome.residualCount,
+                    uploadMessages = listOf(outcome.reason)
+                )
+            }
+            is UploadOutcome.LoginRequired -> updateState {
+                it.copy(
+                    uploadStatus = GarminUploadStatus.LOGIN_REQUIRED,
+                    showLoginDialog = true
+                )
+            }
+        }
+    }
+
+    /**
+     * Signs in to Garmin. Called from the login dialog for the initial submit,
+     * the MFA resume, and the "resend code" action (which re-runs login with
+     * the same credentials and no code). Credentials go straight into the
+     * login call and are never stored on this ViewModel.
+     */
+    fun loginToGarmin(email: String, password: String, mfaCode: String? = null) {
+        viewModelScope.launch {
+            try {
+                when (val status = garminUploader.login(email, password, mfaCode)) {
+                    is LoginStatus.Success -> {
+                        updateState {
+                            it.copy(
+                                garminConnected = true,
+                                showLoginDialog = false,
+                                loginNeedsMfa = false,
+                                loginError = null
+                            )
+                        }
+                        pendingUploadCsv?.let { csv ->
+                            // Retry the upload once with the SAME csv data
+                            performUpload(csv)
+                        }
+                    }
+                    is LoginStatus.NeedsMfa -> updateState {
+                        it.copy(loginNeedsMfa = true, showLoginDialog = true, loginError = null)
+                    }
+                    is LoginStatus.Failed -> updateState {
+                        it.copy(loginError = status.reason, showLoginDialog = true)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Garmin login failed", e)
+                updateState {
+                    it.copy(loginError = e.message ?: e.javaClass.simpleName, showLoginDialog = true)
+                }
+            }
+        }
+    }
+
+    /**
+     * User cancelled the login dialog. Round-1 epic decision: the whole
+     * conversion falls back to the residual-CSV (Downloads + browser) path.
+     */
+    fun onLoginCancelled() {
+        Log.d(TAG, "Garmin login cancelled — falling back to residual CSV")
+        val residual = pendingUploadCsv
+        if (residual != null) {
+            updateState {
+                it.copy(
+                    showLoginDialog = false,
+                    loginNeedsMfa = false,
+                    loginError = null,
+                    uploadStatus = GarminUploadStatus.FALLBACK,
+                    residualCsv = residual,
+                    residualCount = it.processingResult?.recordsGenerated ?: 0,
+                    uploadMessages = emptyList()
+                )
+            }
+        } else {
+            updateState {
+                it.copy(showLoginDialog = false, loginNeedsMfa = false, loginError = null)
+            }
+        }
+    }
+
+    /** API upload blew up: everything new becomes the residual CSV. */
+    private fun fallbackToResidualCsv(reason: String) {
+        val residual = pendingUploadCsv ?: return
+        updateState {
+            it.copy(
+                uploadStatus = GarminUploadStatus.FALLBACK,
+                residualCsv = residual,
+                residualCount = it.processingResult?.recordsGenerated ?: 0,
+                uploadMessages = listOf(reason)
+            )
+        }
+    }
+
     fun resetToInitialState() {
         Log.d(TAG, "Resetting to initial state")
-        _uiState.value = MainUiState()
+        pendingUploadCsv = null
+        _uiState.value = MainUiState(garminConnected = garminUploader.hasStoredToken())
     }
-    
+
     fun saveOutputFile() {
         _uiState.value?.let { state ->
             state.processingResult?.let { result ->
                 if (result.csvData != null && result.outputFileName != null) {
                     // Trigger file save with prepared data
                     // This will be handled by MainActivity
-                    updateState { 
+                    updateState {
                         it.copy(
                             statusMessage = "Ready to save ${result.outputFileName}..."
                         )
@@ -158,19 +349,19 @@ class MainViewModel(
             }
         }
     }
-    
+
     fun getOutputFileName(): String? {
         return _uiState.value?.processingResult?.outputFileName
     }
-    
+
     fun getCsvData(): String? {
         return _uiState.value?.processingResult?.csvData
     }
-    
+
     fun getGarminConnectUrl(): String {
         return GARMIN_CONNECT_URL
     }
-    
+
     private fun updateState(update: (MainUiState) -> MainUiState) {
         _uiState.value = _uiState.value?.let(update) ?: MainUiState()
     }
@@ -180,17 +371,18 @@ class MainViewModel(
 class MainViewModelFactory(
     private val application: Application
 ) : ViewModelProvider.Factory {
-    
+
     companion object {
         fun createInstance(application: Application): MainViewModel {
             val contentResolver = application.contentResolver
             val csvReader = CsvReader(contentResolver)
             val csvValidator = CsvValidator()
             val fileRepository = FileRepository(contentResolver, csvReader, csvValidator, application)
-            return MainViewModel(fileRepository, application)
+            val garminRepository = GarminRepository(application)
+            return MainViewModel(fileRepository, garminRepository, application)
         }
     }
-    
+
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
             return createInstance(application) as T
