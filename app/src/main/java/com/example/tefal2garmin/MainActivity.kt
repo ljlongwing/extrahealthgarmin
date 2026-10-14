@@ -389,13 +389,16 @@ class MainActivity : AppCompatActivity() {
             webView.settings.javaScriptEnabled = false
             webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
 
-            AlertDialog.Builder(this)
+            val dialog = AlertDialog.Builder(this)
                 .setTitle(getString(R.string.help_troubleshooting))
                 .setView(webView)
                 .setPositiveButton(getString(R.string.help_close)) { dialog, _ ->
                     dialog.dismiss()
                 }
                 .show()
+            // Release chromium resources once the dialog goes away; repeated opens
+            // would otherwise leak every WebView instance
+            dialog.setOnDismissListener { webView.destroy() }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open troubleshooting guide", e)
             Toast.makeText(this, getString(R.string.toast_help_open_failed), Toast.LENGTH_SHORT).show()

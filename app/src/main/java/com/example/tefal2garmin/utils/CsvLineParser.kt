@@ -69,14 +69,17 @@ class CsvLineParser {
             if (hasUnclosedQuote) {
                 // This is the start of a multiline record, merge until we find the closing quote
                 val mergedLine = StringBuilder(line)
+                // Running quote count: only count quotes in each newly appended line
+                // instead of rescanning the whole buffer, keeping the merge linear
+                var quoteCount = line.count { it == '"' }
                 val startMergeIndex = i
                 i++
 
                 while (i < lines.size) {
                     val nextLine = lines[i]
                     mergedLine.append("\n").append(nextLine)
-                    val currentQuoteCount = mergedLine.count { it == '"' }
-                    if (currentQuoteCount % 2 == 0) {
+                    quoteCount += nextLine.count { it == '"' }
+                    if (quoteCount % 2 == 0) {
                         // Found the closing quote
                         break
                     }
@@ -118,13 +121,16 @@ class CsvLineParser {
             if (hasUnclosedQuote) {
                 // This is the start of a multiline record, merge until we find the closing quote
                 val mergedLine = StringBuilder(line)
+                // Running quote count: only count quotes in each newly appended line
+                // instead of rescanning the whole buffer, keeping the merge linear
+                var quoteCount = line.count { it == '"' }
                 i++
 
                 while (i < lines.size) {
                     val nextLine = lines[i]
                     mergedLine.append("\n").append(nextLine)
-                    val currentQuoteCount = mergedLine.count { it == '"' }
-                    if (currentQuoteCount % 2 == 0) {
+                    quoteCount += nextLine.count { it == '"' }
+                    if (quoteCount % 2 == 0) {
                         // Found the closing quote
                         break
                     }

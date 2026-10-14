@@ -326,8 +326,13 @@ class CsvValidator {
      */
     private fun isValidDate(dateString: String, isPrimaryFormat: Boolean): Boolean {
         if (isPrimaryFormat) {
-            return dateString.matches(ISO_DATE_REGEX) ||
-                CsvFieldMapper.normalizeDate(dateString) != dateString
+            // Fast path: already-normalized ISO date. The shape alone accepts
+            // impossible dates like 2025-13-45, so range-check the components too.
+            if (ISO_DATE_REGEX.matches(dateString)) {
+                val parts = dateString.split("-")
+                return CsvFieldMapper.isValidDate(parts[2].toInt(), parts[1].toInt(), parts[0].toInt())
+            }
+            return CsvFieldMapper.normalizeDate(dateString) != dateString
         }
         return isValidDate(dateString)
     }

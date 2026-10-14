@@ -124,7 +124,10 @@ class RecordProcessorTest {
         assertEquals("Should preserve date", "2024-01-15", garminRecord["Date"])
         assertEquals("Should have weight", "70.5", garminRecord["Weight"])
         assertEquals("Non-empty BMI should pass through", "23.5", garminRecord["BMI"])
-        assertEquals("Empty Fat should stay empty", "", garminRecord["Fat"])
+        // Blank optional values are dropped before mapping: the key is absent
+        // (null) instead of carrying an empty string through to the schema
+        assertNull("Blank Fat should be dropped (key absent)", garminRecord["Fat"])
+        assertFalse("Fat key should not be present", garminRecord.containsKey("Fat"))
     }
 
     @Test

@@ -250,4 +250,44 @@ class CsvLineParserTest {
 
         assertEquals(2, mergeResult.nextIndex)
     }
+
+    @Test
+    fun testDetectAndMergeMultilineRecords_EscapedQuotesDoNotTriggerMerge() {
+        // A single complete line: the field's surrounding quotes plus an escaped
+        // "" pair give an even quote count, so nothing must be merged
+        val lines = listOf("\"a \"\"b\"\" c\",1,2,3")
+
+        val result = parser.detectAndMergeMultilineRecords(lines)
+
+        assertEquals("One record, no merge expected", 1, result.size)
+        assertEquals("Record should have 4 fields", 4, result[0].size)
+        assertEquals("a \"b\" c", result[0][0])
+        assertEquals("1", result[0][1])
+        assertEquals("2", result[0][2])
+        assertEquals("3", result[0][3])
+    }
+
+    @Test
+    fun testDetectAndMergeMultilineRecords_StrayQuoteSwallowsNextLine() {
+        // Pins CURRENT behavior: a stray quote inside an unquoted field leaves
+        // odd quote parity, so the parser treats following lines as continuations
+        // and the next physically valid line is merged into the same record
+        // (everything after the stray quote lands in one quoted field). Changing
+        // these semantics to proper RFC 4180 field tracking is out of scope here.
+        val lines = listOf(
+            "155.5,23.5,he said \"hi,18.2",
+            "2024-01-16,71.0,23.8,18.5"
+        )
+
+        val result = parser.detectAndMergeMultilineRecords(lines)
+
+        assertEquals("Stray-quote line merges with the next line into one record", 1, result.size)
+        assertEquals(3, result[0].size)
+        assertEquals("155.5", result[0][0])
+        assertEquals("23.5", result[0][1])
+        assertTrue(
+            "The next line should be swallowed into the quoted field: ${result[0][2]}",
+            result[0][2].contains("2024-01-16")
+        )
+    }
 }

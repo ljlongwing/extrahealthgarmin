@@ -97,14 +97,15 @@ class FileRepository(
                 
                 onProgress("Generating CSV...")
                 val outputFileName = generateOutputFileName()
-                val csvData = prepareCsvData(processedDataList) { current, total ->
+                val (csvData, recordsSkipped) = prepareCsvData(processedDataList) { current, total ->
                     onProgress("Generating file... $current/$total")
                 }
 
             Result.success(
                 CsvProcessingResult(
                     recordsProcessed = parsedData.size - 1, // Subtract header
-                    recordsGenerated = processedDataList.size,
+                    recordsGenerated = processedDataList.size - recordsSkipped,
+                    recordsSkipped = recordsSkipped,
                     outputFile = null, // File will be saved via SAF
                     outputFileName = outputFileName,
                     csvData = csvData,
@@ -159,42 +160,53 @@ class FileRepository(
         return "garmin-import-$timestamp.csv"
     }
     
+    /**
+     * Validates each record against the Garmin schema and builds the output CSV.
+     * Invalid rows are logged with their 1-based data-row index and skipped, so a
+     * single bad row no longer aborts the whole export. Returns the CSV content
+     * and the number of skipped rows.
+     */
     private fun prepareCsvData(
         records: List<Map<String, String?>>,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): String {
-        // Validate all records before writing
-        val validationResults = records.map { GarminCsvSchema.validateRecord(it) }
-        val invalidRecords = validationResults.filter { !it.isValid }
-        
-        if (invalidRecords.isNotEmpty()) {
-            invalidRecords.forEachIndexed { index, result ->
-                Log.w(TAG, "Invalid record ${index + 1}: ${result.issues.joinToString(", ")}")
+    ): Pair<String, Int> {
+        val validRecords = ArrayList<Map<String, String?>>(records.size)
+        var skippedCount = 0
+
+        records.forEachIndexed { index, record ->
+            val validationResult = GarminCsvSchema.validateRecord(record)
+            if (validationResult.isValid) {
+                validRecords.add(record)
+            } else {
+                skippedCount++
+                Log.w(
+                    TAG,
+                    "Skipping invalid data row ${index + 1}: ${validationResult.issues.joinToString(", ")}"
+                )
             }
-            throw Exception("Validation failed for ${invalidRecords.size} records")
         }
-        
+
         // Build CSV content as string
         val csvContent = StringBuilder()
-        
+
         // Write headers
         csvContent.append(GarminCsvSchema.generateHeader())
         csvContent.append("\n")
 
         // Write data records
-        records.forEachIndexed { index, record ->
+        validRecords.forEachIndexed { index, record ->
             if (index > 0) {
                 csvContent.append("\n")
             }
-            
+
             val csvLine = GarminCsvSchema.formatRecord(record)
             csvContent.append(csvLine)
-            
+
             // Report progress
-            onProgress(index + 1, records.size)
+            onProgress(index + 1, validRecords.size)
         }
-        
-        return csvContent.toString()
+
+        return Pair(csvContent.toString(), skippedCount)
     }
 }
 
@@ -206,6 +218,7 @@ data class FileInfo(
 data class CsvProcessingResult(
     val recordsProcessed: Int,
     val recordsGenerated: Int,
+    val recordsSkipped: Int = 0,
     val outputFile: File?,
     val outputFileName: String? = null,
     val csvData: String? = null,

@@ -126,19 +126,61 @@ class CsvFieldMapperTest {
 
     @Test
     fun testNormalizeDate_FullRussianMonthNames() {
-        // Test if full month names work (if implemented)
-        val fullMonthCases = mapOf(
-            "15 января 2024" to "15-01-2024",
-            "5 февраля 2024" to "05-02-2024"
+        // Current behavior: full (genitive) month names in "DD месяца YYYY" form
+        // are NOT supported — only the 3-letter tokens are — so they pass through
+        // unchanged. This pins that behavior explicitly.
+        val fullMonthCases = listOf("15 января 2024", "5 февраля 2024")
+
+        fullMonthCases.forEach { input ->
+            assertEquals(
+                "Full month name should pass through unchanged",
+                input,
+                CsvFieldMapper.normalizeDate(input)
+            )
+        }
+    }
+
+    @Test
+    fun testNormalizeDate_PrimaryGoodvibesMonthTokens() {
+        // All 12 month tokens of the primary Goodvibes format, including the
+        // longer CLDR short forms (февр., сент., нояб.) and dot-less "мая"
+        val testCases = mapOf(
+            "янв. 5, 2025 09:00:00" to "2025-01-05",
+            "февр. 15, 2025 10:00:00" to "2025-02-15",
+            "мар. 10, 2025" to "2025-03-10",
+            "апр. 10, 2025" to "2025-04-10",
+            "мая 10, 2025" to "2025-05-10",
+            "июн. 10, 2025" to "2025-06-10",
+            "июл. 10, 2025" to "2025-07-10",
+            "авг. 10, 2025" to "2025-08-10",
+            "сент. 10, 2025" to "2025-09-10",
+            "окт. 25, 2025 09:51:52" to "2025-10-25",
+            "нояб. 10, 2025" to "2025-11-10",
+            "дек. 25, 2025" to "2025-12-25"
         )
 
-        fullMonthCases.forEach { (input, expected) ->
-            val result = CsvFieldMapper.normalizeDate(input)
-            // This might not work yet, but test what we have
-            if (result != input) {
-                assertEquals("Full month name conversion for '$input'", expected, result)
-            }
+        testCases.forEach { (input, expected) ->
+            assertEquals("Failed primary-format token '$input'", expected, CsvFieldMapper.normalizeDate(input))
         }
+    }
+
+    @Test
+    fun testNormalizeDate_PrimaryFormatInvalidDates() {
+        // Feb 30 does not exist even in the leap year 2024 -> unchanged
+        assertEquals("февр. 30, 2024", CsvFieldMapper.normalizeDate("февр. 30, 2024"))
+        // 2-digit year does not satisfy the required \d{4} -> unchanged
+        assertEquals("окт. 25, 25", CsvFieldMapper.normalizeDate("окт. 25, 25"))
+    }
+
+    @Test
+    fun testNormalizeDate_PrimaryFormatCaseInsensitive() {
+        assertEquals("2025-10-25", CsvFieldMapper.normalizeDate("ОКТ. 25, 2025"))
+    }
+
+    @Test
+    fun testNormalizeDate_NominativeMonthUnsupported() {
+        // Nominative "май" is not part of the (genitive) month token set -> unchanged
+        assertEquals("25 май 2025", CsvFieldMapper.normalizeDate("25 май 2025"))
     }
 
     @Test

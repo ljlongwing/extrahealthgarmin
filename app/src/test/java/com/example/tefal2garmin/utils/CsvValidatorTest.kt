@@ -471,4 +471,99 @@ class CsvValidatorTest {
             result.modifiedValues["Время измерения"]?.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) == true
         )
     }
+
+    // File-level header validation (validateHeaders)
+
+    @Test
+    fun testValidateHeaders_PrimaryGoodvibesLineIsValid() {
+        val headerLine = "Время измерения,Вес(кг),ИМТ,Пульс(bpm),Процент жира(%),Масса тела без жира(кг),Подкожный жир(%),Висцеральный жир,Вода в организме(%),Скелетные мышцы(%),Мышечная масса(кг),Костная масса(кг),Белок(%),Величина основного обмена(kcal),Метаболический возраст"
+
+        val result = validator.validateHeaders(headerLine)
+
+        assertTrue(
+            "Real 15-column primary header line should be valid: ${result.errorMessage}",
+            result.isValid
+        )
+    }
+
+    @Test
+    fun testValidateHeaders_UnknownHeadersAreInvalid() {
+        val result = validator.validateHeaders("Name,Age,City")
+
+        assertFalse("Unknown headers should be rejected", result.isValid)
+        assertTrue(
+            "Message should name the minimum required headers, was: ${result.errorMessage}",
+            result.errorMessage?.contains("Missing required headers") == true
+        )
+    }
+
+    @Test
+    fun testValidateHeaders_BothFormatsInOneLineDetectsPrimary() {
+        val headerLine = "Время измерения,Вес(кг),ИМТ,Процент жира(%),Дата,Время,Вес (кг),Жир (% тела)"
+
+        val result = validator.validateHeaders(headerLine)
+
+        // Primary detection wins: the primary minimum set is present, so valid
+        assertTrue(
+            "Mixed primary+legacy header line should be valid via primary detection: ${result.errorMessage}",
+            result.isValid
+        )
+    }
+
+    @Test
+    fun testValidateHeaders_LegacyOnlyLineIsInvalidAtFileLevel() {
+        // Pins actual behavior: validateHeaders gates on the PRIMARY minimum
+        // set, so a legacy-only export fails file-level validation even though
+        // record-level alternative-header support exists (see validateRecord).
+        val legacyHeaderLine = "Дата,Время,Вес (кг),ИМТ,Жир (% тела),Воды (%),Скелет мышц (%),Другое,Физическая активность (уровень),Примечания"
+
+        val result = validator.validateHeaders(legacyHeaderLine)
+
+        assertFalse(
+            "Legacy-only header line should fail the primary-only file gate",
+            result.isValid
+        )
+    }
+
+    @Test
+    fun testValidateRecord_BothKeySetsPrimaryWins() {
+        // A row carrying both header contracts validates against the primary
+        // keys only: legacy values (even invalid ones) must be ignored
+        val record = mapOf(
+            "Время измерения" to "окт. 25, 2025 09:51:52",
+            "Вес(кг)" to "79.65",
+            "ИМТ" to "24.60",
+            "Процент жира(%)" to "21.90",
+            "Дата" to "invalid-date",
+            "Вес (кг)" to "not-a-number",
+            "Жир (% тела)" to "150.0"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertTrue(
+            "Primary keys take precedence; legacy keys must be ignored: ${result.message}",
+            result.isValid
+        )
+        assertTrue(
+            "No fields should be flagged",
+            result.invalidFields.isEmpty() && result.missingFields.isEmpty()
+        )
+    }
+
+    @Test
+    fun testValidateRecord_PrimaryIsoDateOutOfRange() {
+        val record = mapOf(
+            "Время измерения" to "2025-13-45",
+            "Вес(кг)" to "79.65"
+        )
+
+        val result = validator.validateRecord(record)
+
+        assertFalse("ISO-shaped but impossible date should be invalid", result.isValid)
+        assertTrue(
+            "Date should be flagged invalid",
+            result.invalidFields.any { it.contains("Время измерения") }
+        )
+    }
 }

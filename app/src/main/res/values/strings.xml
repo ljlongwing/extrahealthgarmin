@@ -54,7 +54,7 @@
     
     <!-- Help Dialog -->
     <string name="help_title">Help &amp; Troubleshooting</string>
-    <string name="help_content">Common issues:\n\n• Upload error - Wait 2-3 minutes, retry\n• File not supported - Ensure .csv format, not .xlsx\n• Missing fields - Check headers: Date,Weight,BMI,Fat\n• Invalid format - Use YYYY-MM-DD dates, \'.\' decimals\n\n⚠ Never open CSV files in Excel!\n\nFor detailed troubleshooting, tap Troubleshooting Guide below.</string>
+    <string name="help_content">Common issues:\n\n• Upload error - Wait 2-3 minutes, retry\n• File not supported - Ensure .csv format, not .xlsx\n• Missing fields - Check headers: Date,Weight,Fat,BMI\n• Invalid format - Use YYYY-MM-DD dates, \'.\' decimals\n\n⚠ Never open CSV files in Excel!\n\nFor detailed troubleshooting, tap Troubleshooting Guide below.</string>
     <string name="help_close">Close</string>
     <string name="help_troubleshooting">Troubleshooting Guide</string>
     

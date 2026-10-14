@@ -7,13 +7,15 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import com.example.tefal2garmin.utils.CsvLineParser
 
-class CsvReader(private val contentResolver: ContentResolver) {
-    
+// Open for unit tests: CsvReader is subclassed there to supply in-memory lines
+// (ContentResolver.openInputStream is final and returns null in unit tests).
+open class CsvReader(private val contentResolver: ContentResolver) {
+
     companion object {
         private const val TAG = "CsvReader"
     }
-    
-    fun readCsvFile(uri: Uri): List<String> {
+
+    open fun readCsvFile(uri: Uri): List<String> {
         val lines = mutableListOf<String>()
         
         try {

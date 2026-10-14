@@ -2,6 +2,7 @@ package com.example.tefal2garmin.utils
 
 import org.junit.Test
 import org.junit.Assert
+import java.io.ByteArrayInputStream
 import java.io.File
 
 /**
@@ -13,13 +14,8 @@ class EndToEndIntegrationTest {
 
     // Test Data Constants (primary Goodvibes format, as produced by the Tefal app)
     private val validTefalHeaders = "Время измерения,Вес(кг),ИМТ,Процент жира(%)"
-    private val validTefalData = """
-        "окт. 25, 2025 09:51:52",79.65,24.60,21.90
-        "окт. 21, 2025 08:20:53",80.25,24.80,21.70
-    """.trimIndent()
 
     private val invalidHeaders = "Name,Age,City"
-    private val invalidData = "John,25,New York"
 
     @Test
     fun testEndToEnd_ValidCsvProcessing() {
@@ -52,9 +48,9 @@ class EndToEndIntegrationTest {
         // Verify the processed records have the correct Garmin format
         val firstRecord = processedRecords[0]
         Assert.assertEquals("Date should be converted to YYYY-MM-DD", "2024-01-15", firstRecord["Date"])
-        Assert.assertNotNull("Weight should be present", firstRecord["Weight"])
-        Assert.assertNotNull("BMI should be present", firstRecord["BMI"])
-        Assert.assertNotNull("Fat should be present", firstRecord["Fat"])
+        Assert.assertEquals("Weight should pass through unchanged", "155.5", firstRecord["Weight"])
+        Assert.assertEquals("BMI should pass through unchanged", "23.5", firstRecord["BMI"])
+        Assert.assertEquals("Fat should pass through unchanged", "18.2", firstRecord["Fat"])
 
         // Test CSV generation with processed records
         val outputFile = File.createTempFile("test_output.csv", null)
@@ -75,15 +71,16 @@ class EndToEndIntegrationTest {
 
     @Test
     fun testEndToEnd_InvalidHeaders() {
-        // Arrange: Test header validation logic
-        val invalidHeadersList = listOf("Name", "Age", "City")
-        val expectedHeaders = listOf("Время измерения", "Вес(кг)", "ИМТ", "Процент жира(%)")
+        // Act: Validate an unknown header line through the real validator
+        val result = CsvValidator().validateHeaders(invalidHeaders)
 
-        // Act: Check if headers are valid
-        val hasAllRequiredHeaders = invalidHeadersList.containsAll(expectedHeaders)
-
-        // Assert: Should detect missing headers
-        Assert.assertFalse("Should detect missing required headers", hasAllRequiredHeaders)
+        // Assert: Should detect missing headers and name the minimum required set
+        Assert.assertFalse("Unknown headers should be rejected", result.isValid)
+        Assert.assertTrue(
+            "Message should name the minimum required headers, was: ${result.errorMessage}",
+            result.errorMessage?.contains("Missing required headers") == true &&
+                result.errorMessage?.contains("Время измерения") == true
+        )
     }
 
     @Test
@@ -142,16 +139,35 @@ class EndToEndIntegrationTest {
 
     @Test
     fun testEndToEnd_MultilineRecords() {
-        // Arrange: Test basic CSV parsing with quoted fields
-        val csvLine = "\"15.01.2024\",155.5,23.5,\"18.2\""
+        // Arrange: A quoted Tefal date value split across two physical lines —
+        // the date contains a comma, so the row's opening quote is unclosed on
+        // the first line and the unclosed-quote merge must stitch the record
+        // back together before parsing
+        val lines = listOf(
+            validTefalHeaders,
+            "\"окт. 25, 2025 09:51:52",
+            "\",79.65,24.60,21.90"
+        )
 
-        // Act: Parse the CSV line
-        val fields = CsvLineParser().parseCsvLine(csvLine)
+        // Act: Route the lines through the real merge step, then map + convert
+        val records = CsvLineParser().detectAndMergeMultilineRecords(lines)
+        val headers = records[0]
+        val recordMap = headers.zip(records[1]).toMap()
+        val result = RecordProcessor.processRecord(recordMap, CsvValidator())
 
-        // Assert: Should parse quoted fields correctly
-        Assert.assertEquals("Should parse 4 fields", 4, fields.size)
-        Assert.assertEquals("First field should be correct", "15.01.2024", fields[0])
-        Assert.assertEquals("Last field should be correct", "18.2", fields[3])
+        // Assert: The multiline record is merged into one row and converts fully
+        Assert.assertEquals("Header + one merged record expected", 2, records.size)
+        Assert.assertEquals("Merged record should have 4 fields", 4, records[1].size)
+        Assert.assertEquals(
+            "Stitched date field should keep its embedded newline",
+            "окт. 25, 2025 09:51:52\n",
+            records[1][0]
+        )
+        Assert.assertTrue("Merged record should convert successfully", result.success)
+        Assert.assertEquals("Date should be normalized despite the trailing newline", "2025-10-25", result.record["Date"])
+        Assert.assertEquals("Weight should be mapped", "79.65", result.record["Weight"])
+        Assert.assertEquals("Fat should be mapped", "21.90", result.record["Fat"])
+        Assert.assertEquals("BMI should be mapped", "24.60", result.record["BMI"])
     }
 
     @Test
@@ -188,31 +204,59 @@ class EndToEndIntegrationTest {
 
     @Test
     fun testEndToEnd_EmptyFile() {
-        // Arrange: Test empty content handling
-        val emptyContent = ""
+        val validator = CsvValidator()
 
-        // Act: Check if content is empty
-        val isEmpty = emptyContent.isEmpty()
+        // Act + Assert: An empty file is rejected
+        val emptyResult = validator.validateDelimiter(emptyList())
+        Assert.assertFalse("Empty file should be rejected", emptyResult.isValid)
+        Assert.assertTrue(
+            "Should report an empty file, was: ${emptyResult.errorMessage}",
+            emptyResult.errorMessage?.contains("File is empty") == true
+        )
 
-        // Assert: Should detect empty content
-        Assert.assertTrue("Should detect empty content", isEmpty)
+        // Semicolon-delimited headers are rejected
+        val semicolonResult = validator.validateDelimiter(listOf(validTefalHeaders.replace(",", ";")))
+        Assert.assertFalse("Semicolon delimiter should be rejected", semicolonResult.isValid)
+        Assert.assertTrue(
+            "Should name the semicolon problem, was: ${semicolonResult.errorMessage}",
+            semicolonResult.errorMessage?.contains("semicolon") == true
+        )
+
+        // Tab-delimited headers are rejected too
+        val tabResult = validator.validateDelimiter(listOf(validTefalHeaders.replace(",", "\t")))
+        Assert.assertFalse("Tab delimiter should be rejected", tabResult.isValid)
+        Assert.assertTrue(
+            "Should name the tab problem, was: ${tabResult.errorMessage}",
+            tabResult.errorMessage?.contains("tab") == true
+        )
     }
 
     @Test
     fun testEndToEnd_NonUtf8Encoding() {
-        // Arrange: Test UTF-8 validation
-        val validUtf8Content = "Дата,Вес (кг),ИМТ,Жир (% тела)\n15.01.2024,155.5,23.5,18.2"
-        val invalidUtf8File = createTempFile("non_utf8.csv", "")
-        invalidUtf8File.writeText(validUtf8Content, Charsets.ISO_8859_1)
+        val validator = CsvValidator()
+        val headerBytes = validTefalHeaders.toByteArray(Charsets.UTF_8)
 
-        // Act: Test encoding validation
-        val isValidUtf8 = isValidUtf8(invalidUtf8File)
+        // (a) A UTF-8 BOM must be rejected
+        val bomBytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + headerBytes
+        val bomResult = validator.validateEncoding(ByteArrayInputStream(bomBytes))
+        Assert.assertFalse("UTF-8 BOM should be rejected", bomResult.isValid)
+        Assert.assertTrue(
+            "Should report the BOM, was: ${bomResult.errorMessage}",
+            bomResult.errorMessage?.contains("BOM") == true
+        )
 
-        // Assert: Should detect encoding issues
-        // Note: This is a simplified test - in practice, the file reading might succeed
-        // but the content might be garbled. The actual encoding validation would be more complex.
-        Assert.assertTrue("File should exist", invalidUtf8File.exists())
-        // The isValidUtf8 check might not catch this specific case, but the test demonstrates the concept
+        // (b) Valid Cyrillic header bytes pass
+        val validResult = validator.validateEncoding(ByteArrayInputStream(headerBytes))
+        Assert.assertTrue("Valid UTF-8 content should pass: ${validResult.errorMessage}", validResult.isValid)
+
+        // (c) A valid header followed by a byte that can never occur in UTF-8 (0xFF)
+        val corruptBytes = headerBytes + byteArrayOf(0xFF.toByte())
+        val corruptResult = validator.validateEncoding(ByteArrayInputStream(corruptBytes))
+        Assert.assertFalse("Non-UTF-8 byte should be rejected", corruptResult.isValid)
+        Assert.assertTrue(
+            "Should report an encoding problem, was: ${corruptResult.errorMessage}",
+            corruptResult.errorMessage?.contains("encoding") == true
+        )
     }
 
     @Test
@@ -280,26 +324,5 @@ class EndToEndIntegrationTest {
         // Verify output contains correctly formatted dates
         val outputContent = outputFile.readText()
         Assert.assertTrue("Should contain converted date", outputContent.contains("2025-10-25"))
-    }
-
-    /**
-     * Helper method to create temporary test files
-     */
-    private fun createTempFile(filename: String, content: String): File {
-        val file = File.createTempFile(filename.substringBeforeLast("."), filename.substringAfterLast(".", "tmp"))
-        file.writeText(content, Charsets.UTF_8)
-        return file
-    }
-
-    /**
-     * Helper method to check if file is valid UTF-8
-     */
-    private fun isValidUtf8(file: File): Boolean {
-        return try {
-            file.readText(Charsets.UTF_8)
-            true
-        } catch (e: Exception) {
-            false
-        }
     }
 }

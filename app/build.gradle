@@ -18,9 +18,12 @@ android {
     signingConfigs {
         release {
             storeFile file('release.keystore')
-            storePassword 'android'
+            // Passwords can be supplied via Gradle properties
+            // (-PRELEASE_STORE_PASSWORD=... / -PRELEASE_KEY_PASSWORD=...);
+            // the fallback keeps local debug-signing behavior unchanged.
+            storePassword project.findProperty('RELEASE_STORE_PASSWORD') ?: 'android'
             keyAlias 'release'
-            keyPassword 'android'
+            keyPassword project.findProperty('RELEASE_KEY_PASSWORD') ?: 'android'
         }
     }
 
@@ -35,6 +38,15 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric 4.12.1 cannot run on the current JDK (its bundled ASM
+            // rejects the runtime's class files), so util classes that call
+            // android.util.Log run as plain JUnit with stubbed framework methods.
+            returnDefaultValues = true
+        }
     }
 
     // Kotlin is compiled by AGP 9's built-in Kotlin support; its jvmTarget

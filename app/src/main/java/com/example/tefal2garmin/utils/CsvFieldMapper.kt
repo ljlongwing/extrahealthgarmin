@@ -9,7 +9,7 @@ class CsvFieldMapper {
             "июл" to "07", "авг" to "08", "сен" to "09", "окт" to "10", "ноя" to "11", "дек" to "12"
         )
 
-        private fun isValidDate(day: Int, month: Int, year: Int): Boolean {
+        fun isValidDate(day: Int, month: Int, year: Int): Boolean {
             if (month < 1 || month > 12) return false
             if (day < 1) return false
 
@@ -48,11 +48,16 @@ class CsvFieldMapper {
 
             // Handle various Russian date formats and convert to YYYY-MM-DD
             return when {
-                // Format: "окт. 25, 2025 09:51:52" (Tefal Goodvibes primary format)
-                cleanDate.lowercase().matches(Regex("""(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)\.\s*\d{1,2},\s*\d{4}.*""")) -> {
+                // Format: "окт. 25, 2025 09:51:52" (Tefal Goodvibes primary format).
+                // The month word may be a longer CLDR short form ("февр.", "сент.",
+                // "нояб.") or dot-less genitive ("мая"), so match the full month word
+                // and fall back to its 3-letter prefix for the lookup below.
+                cleanDate.lowercase().matches(Regex("""(янв|фев|мар|апр|мая|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\.?\s*\d{1,2},\s*\d{4}.*""")) -> {
                     val parts = cleanDate.split("\\s+|,\\s*".toRegex()).filter { it.isNotEmpty() }
                     if (parts.size >= 3) {
-                        val monthAbbrev = parts[0].replace(".", "").lowercase()
+                        // All lookup keys are 3 letters; take(3) splits CLDR forms
+                        // like "февр." down to the "фев" prefix ("мая" is already 3)
+                        val monthAbbrev = parts[0].replace(".", "").lowercase().take(3)
                         val day = parts[1].padStart(2, '0')
                         val year = parts[2]
 
