@@ -205,8 +205,87 @@ class GarminUploadClientTest {
 
         assertTrue("expected Partial, got $result", result is UploadResult.Partial)
         val partial = result as UploadResult.Partial
-        assertEquals(listOf(EPOCH_1, EPOCH_3), partial.succeededKeys)
+        assertEquals(
+            "succeededKeys are composite journal keys (epoch:weight)",
+            listOf("${EPOCH_1}:75.5", "${EPOCH_3}:75.5"),
+            partial.succeededKeys
+        )
         assertEquals(listOf("Duplicate detection - existing measurement"), partial.failureMessages)
+    }
+
+    /** Task .6 audit: HTTP 204 No Content is the plain success answer. */
+    @Test
+    fun `upload_204_no_content_returns_success`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        val result = client.uploadWeighIns(listOf(record(EPOCH_1)), tokens())
+
+        assertEquals(UploadResult.Success(1), result)
+        assertEquals("204 must produce exactly ONE request", 1, server.requestCount)
+    }
+
+    /**
+     * Task .6 audit: range bounds are inclusive maxima — 500.0 kg is accepted,
+     * 500.01 kg is rejected BEFORE any network call, and the FIT uint16 scale
+     * (weight * 100) must fit the wire field even at the maximum.
+     */
+    @Test
+    fun `range_boundaries_inclusive_maxima_accepted_just_over_rejected`() = runBlocking {
+        // Sanity: the accepted maximum must survive the FIT scale-100 encoding.
+        assertTrue(
+            "MAX_WEIGHT_KG * 100 must fit the FIT uint16 field",
+            GarminWeighInRecord.MAX_WEIGHT_KG * 100 <= 65535f
+        )
+
+        server.enqueue(MockResponse().setResponseCode(204))
+        val accepted = client.uploadWeighIns(
+            listOf(record(EPOCH_1, weightKg = 500.0f, percentFat = 100.0f, bmi = 100.0f)),
+            tokens()
+        )
+        assertEquals("inclusive maxima (500.0 kg / 100% / BMI 100) must be accepted",
+            UploadResult.Success(1), accepted)
+        assertEquals(1, server.requestCount)
+
+        try {
+            client.uploadWeighIns(listOf(record(EPOCH_2, weightKg = 500.01f)), tokens())
+            fail("expected GarminValidationError just above the weight maximum")
+        } catch (e: GarminValidationError) {
+            assertTrue(e.message!!.contains("range"))
+        }
+        assertEquals("out-of-range records must not touch the network", 1, server.requestCount)
+    }
+
+    /**
+     * Task .6 audit: a 200 answer whose failures carry NO correlatable index
+     * must yield EMPTY succeededKeys even when successes are listed — only
+     * provable imports may be journaled.
+     */
+    @Test
+    fun `upload_200_successes_plus_unindexed_failures_yields_empty_succeeded_keys`() = runBlocking {
+        server.enqueue(
+            jsonResponse(
+                """{"detailedImportResult":{"successes":[{"index":0},{"index":1}],"failures":[
+                    {"messages":["Duplicate detection - existing measurement"]}
+                ]}}"""
+            )
+        )
+
+        val result = client.uploadWeighIns(
+            listOf(record(EPOCH_1), record(EPOCH_2)),
+            tokens()
+        )
+
+        assertTrue("expected Partial, got $result", result is UploadResult.Partial)
+        val partial = result as UploadResult.Partial
+        assertTrue(
+            "unindexed failures must yield EMPTY succeededKeys even with listed successes: ${partial.succeededKeys}",
+            partial.succeededKeys.isEmpty()
+        )
+        assertEquals(
+            listOf("Duplicate detection - existing measurement"),
+            partial.failureMessages
+        )
+        assertEquals(1, server.requestCount)
     }
 
     @Test

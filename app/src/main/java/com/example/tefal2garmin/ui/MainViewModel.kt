@@ -9,7 +9,10 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.example.tefal2garmin.data.FileInfo
 import com.example.tefal2garmin.data.FileRepository
@@ -70,6 +73,7 @@ class MainViewModel(
     companion object {
         private const val TAG = "MainViewModel"
         private const val GARMIN_CONNECT_URL = "https://connect.garmin.com/modern/import-data"
+        private const val LOGIN_CANCELLED_REASON = "Login cancelled"
     }
 
     private val _uiState = MutableLiveData<MainUiState>()
@@ -80,6 +84,20 @@ class MainViewModel(
      * in flight). Never holds credentials — only the converted data.
      */
     private var pendingUploadCsv: String? = null
+
+    /**
+     * The in-flight login coroutine. [onLoginCancelled] cancels it so a late
+     * Success can never run [performUpload] (or flip any state) after the
+     * residual fallback already shipped.
+     */
+    private var loginJob: Job? = null
+
+    /**
+     * Residual-save keys already claimed for this ViewModel's lifetime. Lives
+     * here (not in the Activity) so an Activity rotation cannot re-trigger
+     * the one-shot Downloads save + browser open.
+     */
+    private val claimedResidualSaveKeys = mutableSetOf<String>()
 
     init {
         _uiState.value = MainUiState(garminConnected = garminUploader.hasStoredToken())
@@ -206,6 +224,8 @@ class MainViewModel(
     private suspend fun performUpload(csvData: String) {
         try {
             handleUploadOutcome(garminUploader.uploadNewFromCsv(csvData))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Garmin upload failed", e)
             fallbackToResidualCsv(e.message ?: e.javaClass.simpleName)
@@ -256,9 +276,15 @@ class MainViewModel(
      * login call and are never stored on this ViewModel.
      */
     fun loginToGarmin(email: String, password: String, mfaCode: String? = null) {
-        viewModelScope.launch {
+        loginJob = viewModelScope.launch {
             try {
-                when (val status = garminUploader.login(email, password, mfaCode)) {
+                val status = garminUploader.login(email, password, mfaCode)
+                if (!isActive) {
+                    // Cancelled while the login coroutine was suspended: the
+                    // fallback already shipped — no state flip, no upload.
+                    return@launch
+                }
+                when (status) {
                     is LoginStatus.Success -> {
                         updateState {
                             it.copy(
@@ -280,6 +306,8 @@ class MainViewModel(
                         it.copy(loginError = status.reason, showLoginDialog = true)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e // cancelled by onLoginCancelled — it owns the state now
             } catch (e: Exception) {
                 Log.e(TAG, "Garmin login failed", e)
                 updateState {
@@ -292,44 +320,65 @@ class MainViewModel(
     /**
      * User cancelled the login dialog. Round-1 epic decision: the whole
      * conversion falls back to the residual-CSV (Downloads + browser) path.
+     * The in-flight login Job is cancelled first so a late Success can never
+     * run [performUpload] or flip state after the fallback shipped, and the
+     * residual is the JOURNAL-FILTERED one from the repository (only rows
+     * that were never confirmed imported).
      */
     fun onLoginCancelled() {
         Log.d(TAG, "Garmin login cancelled — falling back to residual CSV")
+        loginJob?.cancel()
+        loginJob = null
         val residual = pendingUploadCsv
+        pendingUploadCsv = null
+        updateState {
+            it.copy(showLoginDialog = false, loginNeedsMfa = false, loginError = null)
+        }
         if (residual != null) {
-            updateState {
-                it.copy(
-                    showLoginDialog = false,
-                    loginNeedsMfa = false,
-                    loginError = null,
-                    uploadStatus = GarminUploadStatus.FALLBACK,
-                    residualCsv = residual,
-                    residualCount = it.processingResult?.recordsGenerated ?: 0,
-                    uploadMessages = emptyList()
-                )
-            }
-        } else {
-            updateState {
-                it.copy(showLoginDialog = false, loginNeedsMfa = false, loginError = null)
+            fallbackToResidual(residual, LOGIN_CANCELLED_REASON)
+        }
+    }
+
+    /** API upload blew up: everything not yet journaled becomes the residual CSV. */
+    private fun fallbackToResidualCsv(reason: String) {
+        val residual = pendingUploadCsv ?: return
+        pendingUploadCsv = null
+        fallbackToResidual(residual, reason)
+    }
+
+    /** Shared cancel/exception fallback: journal-filtered residual via the repository. */
+    private fun fallbackToResidual(csvData: String, reason: String) {
+        viewModelScope.launch {
+            try {
+                handleUploadOutcome(garminUploader.fallbackResidual(csvData, reason))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Residual fallback failed", e)
+                updateState {
+                    it.copy(
+                        uploadStatus = GarminUploadStatus.FALLBACK,
+                        residualCsv = csvData,
+                        residualCount = it.processingResult?.recordsGenerated ?: 0,
+                        uploadMessages = listOf(reason)
+                    )
+                }
             }
         }
     }
 
-    /** API upload blew up: everything new becomes the residual CSV. */
-    private fun fallbackToResidualCsv(reason: String) {
-        val residual = pendingUploadCsv ?: return
-        updateState {
-            it.copy(
-                uploadStatus = GarminUploadStatus.FALLBACK,
-                residualCsv = residual,
-                residualCount = it.processingResult?.recordsGenerated ?: 0,
-                uploadMessages = listOf(reason)
-            )
-        }
-    }
+    /**
+     * Returns true exactly once per distinct [saveKey]. The decision state
+     * lives in the ViewModel, so rotating the Activity (which re-renders the
+     * same LiveData emission) cannot re-save the residual CSV to Downloads
+     * and re-open the browser per rotation.
+     */
+    fun claimResidualSave(saveKey: String): Boolean = claimedResidualSaveKeys.add(saveKey)
 
     fun resetToInitialState() {
         Log.d(TAG, "Resetting to initial state")
+        loginJob?.cancel()
+        loginJob = null
         pendingUploadCsv = null
         _uiState.value = MainUiState(garminConnected = garminUploader.hasStoredToken())
     }

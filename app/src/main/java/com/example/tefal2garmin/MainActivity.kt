@@ -1,8 +1,10 @@
 package com.example.tefal2garmin
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.MediaStore
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -38,12 +40,6 @@ import com.example.tefal2garmin.ui.MainUiState
 import com.example.tefal2garmin.ui.MainViewModel
 import com.example.tefal2garmin.ui.MainViewModelFactory
 import com.example.tefal2garmin.utils.MimeTypeValidator
-import com.example.tefal2garmin.garmin.GarminAuthClient
-import com.example.tefal2garmin.garmin.GarminTokens
-import com.example.tefal2garmin.garmin.LoginResult
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -62,16 +58,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var connectGarminButton: Button
     private lateinit var garminConnectedText: TextView
 
-    // Login dialog (AlertDialog + programmatic custom view, no fragments)
+    // Login dialog (AlertDialog + programmatic custom view, no fragments).
+    // Nullable: the refs (and the input contents) are cleared on every dialog
+    // dismiss — credentials must not outlive the dialog.
     private var loginDialog: AlertDialog? = null
-    private lateinit var loginEmailInput: EditText
-    private lateinit var loginPasswordInput: EditText
-    private lateinit var loginMfaInput: EditText
-    private lateinit var loginErrorText: TextView
+    private var loginEmailInput: EditText? = null
+    private var loginPasswordInput: EditText? = null
+    private var loginMfaInput: EditText? = null
+    private var loginErrorText: TextView? = null
 
     // Guards so repeated LiveData emissions never re-trigger one-shot actions
-    // (residual save / dialog lifecycle) — see renderUploadOutcome/renderLoginDialog
-    private var lastResidualSaveKey: String? = null
+    // (dialog lifecycle) — see renderLoginDialog. The residual save-once
+    // decision lives in the ViewModel (claimResidualSave) so rotation
+    // cannot re-save + re-open the browser.
     private var lastShowLoginDialog = false
     private var lastGarminConnected = false
 
@@ -179,10 +178,11 @@ class MainActivity : AppCompatActivity() {
         addGarminConnectionViews()
 
         // Debug-only live-spike trigger for the Garmin DI OAuth2 auth client
-        // (task tefal2garmin-garmin-api-import-j5e.1): hidden long-press on the
-        // status text. No production UI — results go to logcat only. Compile
-        // it out of release behavior via BuildConfig.DEBUG; credentials come
-        // from BuildConfig fields fed by Gradle properties:
+        // (task tefal2garmin-garmin-api-import-j5e.1): hidden long-press on
+        // the status text. The implementation lives in the debug source set
+        // (release links a no-op — the GARMINSPIKE_* BuildConfig fields
+        // exist only in debug). Credentials come from BuildConfig fields fed
+        // by Gradle properties:
         //   ./gradlew assembleDebug -PGARMINSPIKE_EMAIL=... \
         //     -PGARMINSPIKE_PASSWORD=... [-PGARMINSPIKE_MFA_CODE=...]
         // Watch with: adb logcat -s MainActivity GarminAuth GarminHttp
@@ -309,10 +309,12 @@ class MainActivity : AppCompatActivity() {
     /** Saves the residual CSV once per conversion outcome ( Downloads + browser ). */
     private fun saveResidualIfNeeded(state: MainUiState) {
         val residualCsv = state.residualCsv ?: return
+        if (state.residualCount <= 0) return // nothing new — no file, no browser
         val fileName = viewModel.getOutputFileName() ?: return
         val saveKey = "$fileName:${state.uploadStatus}:${state.residualCount}:${residualCsv.hashCode()}"
-        if (saveKey == lastResidualSaveKey) return
-        lastResidualSaveKey = saveKey
+        // Claim lives in the ViewModel: rotation re-renders the same state but
+        // can never claim the same key twice.
+        if (!viewModel.claimResidualSave(saveKey)) return
         saveFileAutomatically(residualCsv, fileName)
     }
 
@@ -329,48 +331,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Runs one Garmin DI login (and, when a code is supplied via
-     * -PGARMINSPIKE_MFA_CODE, the MFA resume) with the spike credentials.
-     * Output is logcat-only; secret values (password, tokens, tickets) are
-     * never logged — only lengths and client ids.
+     * Debug-only live spike for the Garmin DI OAuth2 auth client — the real
+     * implementation lives in the debug source set (needs the debug-only
+     * GARMINSPIKE_* BuildConfig fields); release builds link a no-op.
      */
     private fun triggerGarminAuthSpike() {
-        val email = BuildConfig.GARMINSPIKE_EMAIL
-        val password = BuildConfig.GARMINSPIKE_PASSWORD
-        if (email.isBlank() || password.isBlank()) {
-            Log.w(TAG, "Garmin spike: credentials absent; rebuild with " +
-                "-PGARMINSPIKE_EMAIL=... -PGARMINSPIKE_PASSWORD=...")
-            return
-        }
-        Log.i(TAG, "Garmin spike: starting DI OAuth2 login")
-        val client = GarminAuthClient()
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                when (val result = client.login(email, password)) {
-                    is LoginResult.NeedsMfa -> {
-                        Log.i(TAG, "Garmin spike: MFA required " +
-                            "(method=${result.clientState.mfaMethod})")
-                        val mfaCode = BuildConfig.GARMINSPIKE_MFA_CODE
-                        if (mfaCode.isBlank()) {
-                            Log.i(TAG, "Garmin spike: no -PGARMINSPIKE_MFA_CODE supplied; " +
-                                "stopping at MFA")
-                        } else {
-                            logSpikeTokens("after MFA resume", client.resumeLogin(result.clientState, mfaCode))
-                        }
-                    }
-                    is LoginResult.Success -> logSpikeTokens("login", result.tokens)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Garmin spike failed: ${e.javaClass.simpleName}: ${e.message}")
-            }
-        }
-    }
-
-    private fun logSpikeTokens(stage: String, tokens: GarminTokens) {
-        // Lengths and ids only — token values must never reach logcat.
-        Log.i(TAG, "Garmin spike OK ($stage): di_client_id=${tokens.diClientId}, " +
-            "di_token.length=${tokens.diToken.length}, " +
-            "di_refresh_token.length=${tokens.diRefreshToken.length}")
+        GarminAuthSpike.trigger(this)
     }
 
 
@@ -519,19 +485,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Writes [content] to the public Downloads directory as [fileName] and, on
-     * success, opens Garmin Connect after the usual 1.5 s pause. Refactored to
-     * take explicit content+filename so the residual-CSV fallback can reuse it.
+     * Writes [content] to the public Downloads directory as [fileName]. On
+     * success the Garmin Connect import page opens after the usual 1.5 s
+     * pause; on failure the file-save-failed status is shown and the browser
+     * is NOT opened (a browser without a saved file is a dead end).
+     *
+     * API 29+ goes through the MediaStore Downloads collection — raw writes
+     * to the scoped-storage public Downloads tree silently fail on modern
+     * Android (on-device E2E 2026-10-14: browser opened, no file appeared).
+     * Below API 29 the legacy direct File path is kept.
      */
     private fun saveFileAutomatically(content: String, fileName: String) {
-        // Create file in Downloads directory automatically
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val outputFile = File(downloadsDir, fileName)
+        val saved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            saveViaMediaStoreDownloads(content, fileName)
+        } else {
+            saveLegacyDownloadsFile(content, fileName)
+        }
 
-        try {
-            outputFile.writeText(content, Charsets.UTF_8)
-
-            Log.d(TAG, "File automatically saved to: ${outputFile.absolutePath}")
+        if (saved) {
             runOnUiThread {
                 statusText.text = getString(R.string.file_saved_auto, fileName)
                 // Automatically open Garmin Connect after a short delay
@@ -539,12 +510,65 @@ class MainActivity : AppCompatActivity() {
                     openGarminConnect()
                 }, 1500) // 1.5 second delay to show the success message
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to auto-save file", e)
+        } else {
             runOnUiThread {
                 statusText.text = getString(R.string.file_save_failed)
             }
         }
+    }
+
+    /** API 29+: MediaStore Downloads collection (scoped-storage friendly). */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun saveViaMediaStoreDownloads(content: String, fileName: String): Boolean = try {
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, "text/csv")
+            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        if (uri == null) {
+            Log.e(TAG, "MediaStore Downloads insert returned no uri for $fileName")
+            false
+        } else {
+            val written = try {
+                contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(content.toByteArray(Charsets.UTF_8))
+                } != null
+            } catch (e: Exception) {
+                Log.e(TAG, "MediaStore Downloads write failed", e)
+                false
+            }
+            if (written) {
+                values.clear()
+                values.put(MediaStore.Downloads.IS_PENDING, 0)
+                val published = contentResolver.update(uri, values, null, null) > 0
+                if (published) {
+                    Log.d(TAG, "File automatically saved via MediaStore: $fileName")
+                } else {
+                    contentResolver.delete(uri, null, null)
+                }
+                published
+            } else {
+                contentResolver.delete(uri, null, null) // drop the dangling pending row
+                false
+            }
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to auto-save file via MediaStore", e)
+        false
+    }
+
+    /** Legacy (pre-API-29) direct write into the public Downloads directory. */
+    private fun saveLegacyDownloadsFile(content: String, fileName: String): Boolean = try {
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val outputFile = File(downloadsDir, fileName)
+        outputFile.writeText(content, Charsets.UTF_8)
+        Log.d(TAG, "File automatically saved to: ${outputFile.absolutePath}")
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to auto-save file", e)
+        false
     }
 
     private fun openGarminConnect() {
@@ -573,12 +597,12 @@ class MainActivity : AppCompatActivity() {
                 (state.garminConnected && !lastGarminConnected)
         if (closeDueToState && loginDialog?.isShowing == true) {
             loginDialog?.dismiss()
-            loginDialog = null
         }
 
-        // Drop stale references (user dismissed via back/outside touch)
+        // Drop stale references (user dismissed via back/outside touch); the
+        // dismiss listener also clears the input fields and their refs.
         if (loginDialog != null && loginDialog?.isShowing != true) {
-            loginDialog = null
+            dropLoginDialog()
         }
 
         if (state.showLoginDialog && loginDialog?.isShowing != true) {
@@ -589,13 +613,32 @@ class MainActivity : AppCompatActivity() {
         lastGarminConnected = state.garminConnected
 
         val dialog = loginDialog ?: return
-        loginMfaInput.visibility = if (state.loginNeedsMfa) View.VISIBLE else View.GONE
+        val mfaInput = loginMfaInput ?: return
+        val errorText = loginErrorText ?: return
+        mfaInput.visibility = if (state.loginNeedsMfa) View.VISIBLE else View.GONE
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.visibility =
             if (state.loginNeedsMfa) View.VISIBLE else View.GONE
-        loginErrorText.text = state.loginError
+        errorText.text = state.loginError
             ?.let { getString(R.string.login_failed, it) }
             ?: ""
-        loginErrorText.visibility = if (state.loginError == null) View.GONE else View.VISIBLE
+        errorText.visibility = if (state.loginError == null) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * Clears every login input (email/password/MFA), drops the Activity's
+     * field references and the dialog ref. Runs on every dialog dismiss —
+     * cancel, back/outside touch, and success all end in a dismiss — so
+     * credentials never outlive the dialog.
+     */
+    private fun dropLoginDialog() {
+        loginEmailInput?.setText("")
+        loginPasswordInput?.setText("")
+        loginMfaInput?.setText("")
+        loginEmailInput = null
+        loginPasswordInput = null
+        loginMfaInput = null
+        loginErrorText = null
+        loginDialog = null
     }
 
     /**
@@ -609,27 +652,33 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(padding, padding / 2, padding, 0)
         }
-        loginEmailInput = EditText(this).apply {
+        // Local non-null handles: the fields are nullable (cleared on
+        // dismiss), but inside this builder they are freshly assigned.
+        val emailInput = EditText(this).apply {
             hint = getString(R.string.login_email_hint)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
         }
-        loginPasswordInput = EditText(this).apply {
+        val passwordInput = EditText(this).apply {
             hint = getString(R.string.login_password_hint)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = PasswordTransformationMethod()
         }
-        loginMfaInput = EditText(this).apply {
+        val mfaInput = EditText(this).apply {
             hint = getString(R.string.mfa_code_hint)
             inputType = InputType.TYPE_CLASS_NUMBER
             visibility = View.GONE
         }
-        loginErrorText = TextView(this).apply {
+        val errorText = TextView(this).apply {
             visibility = View.GONE
         }
-        container.addView(loginEmailInput)
-        container.addView(loginPasswordInput)
-        container.addView(loginMfaInput)
-        container.addView(loginErrorText)
+        loginEmailInput = emailInput
+        loginPasswordInput = passwordInput
+        loginMfaInput = mfaInput
+        loginErrorText = errorText
+        container.addView(emailInput)
+        container.addView(passwordInput)
+        container.addView(mfaInput)
+        container.addView(errorText)
 
         val dialog = AlertDialog.Builder(this)
             .setTitle(getString(R.string.login_title))
@@ -639,24 +688,27 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton(getString(R.string.login_cancel), null)
             .setOnCancelListener { viewModel.onLoginCancelled() }
             .create()
+        // Every exit path (cancel button, back, outside touch, success) ends
+        // in a dismiss — clear the inputs and drop the refs there.
+        dialog.setOnDismissListener { dropLoginDialog() }
         dialog.show()
 
         // Custom click listeners (installed after show()) replace the default
         // dismiss-on-click so NeedsMfa/Failed keep the dialog open with the
         // entered credentials intact.
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val mfaCode = loginMfaInput.text.toString().trim().takeIf { it.isNotEmpty() }
+            val mfaCode = mfaInput.text.toString().trim().takeIf { it.isNotEmpty() }
             viewModel.loginToGarmin(
-                loginEmailInput.text.toString().trim(),
-                loginPasswordInput.text.toString(),
+                emailInput.text.toString().trim(),
+                passwordInput.text.toString(),
                 mfaCode
             )
         }
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
             // Resend = re-run login with the same credentials and no code
             viewModel.loginToGarmin(
-                loginEmailInput.text.toString().trim(),
-                loginPasswordInput.text.toString(),
+                emailInput.text.toString().trim(),
+                passwordInput.text.toString(),
                 null
             )
         }

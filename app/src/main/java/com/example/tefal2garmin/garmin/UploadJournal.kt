@@ -16,21 +16,36 @@ interface JournalPersistence {
     fun save(json: String)
 }
 
-/** Stores the journal as a JSON array of epoch-second keys in [file]. */
+/** Stores the journal as a JSON array of composite journal keys in [file]. */
 class FileJournalPersistence(private val file: File) : JournalPersistence {
 
     override fun load(): String? = if (file.exists()) file.readText() else null
 
+    /**
+     * Atomic write: the JSON lands in a temp file first and is renamed over
+     * [file], so a crash mid-write can never truncate or half-overwrite the
+     * journal (a corrupted journal degrades to "start fresh", losing
+     * dedup state).
+     */
     override fun save(json: String) {
         file.parentFile?.mkdirs()
-        file.writeText(json)
+        val temp = File(file.parentFile, file.name + ".tmp")
+        temp.writeText(json)
+        if (!temp.renameTo(file)) {
+            // Rename can fail across filesystems or on exotic providers —
+            // fall back to copy+delete so the save still completes.
+            temp.copyTo(file, overwrite = true)
+            temp.delete()
+        }
     }
 }
 
 /**
- * Local sent-timestamp journal that decides which weigh-in records are new
- * (keys = epoch-second UTC strings), so re-sharing the same CSV never
- * uploads a reading twice.
+ * Local sent-records journal that decides which weigh-in records are new
+ * (keys = composite `epochSecondsUtc:weightKg` strings, see
+ * [GarminWeighInRecord.journalKey]), so re-sharing the same CSV never
+ * uploads a reading twice while a same-day second measurement still
+ * uploads.
  *
  * [filterNew] dedupes against the journal AND within the batch itself —
  * Tefal exports can contain repeated timestamps (re-measurements). Only
@@ -53,8 +68,10 @@ class UploadJournal(private val persistence: JournalPersistence) {
     }
 
     /**
-     * Returns the records whose timestamps are neither journaled nor already
-     * present earlier in [records] (preserving input order).
+     * Returns the records whose composite keys ([GarminWeighInRecord.journalKey])
+     * are neither journaled nor already present earlier in [records]
+     * (preserving input order) — a same-day second measurement with a
+     * different weight counts as new, an identical re-record does not.
      */
     fun filterNew(records: List<GarminWeighInRecord>): List<GarminWeighInRecord> =
         synchronized(lock) {
@@ -65,13 +82,13 @@ class UploadJournal(private val persistence: JournalPersistence) {
             }
         }
 
-    /** Marks the given epoch-second timestamps as uploaded and persists. */
-    fun markSent(epochSecondsUtc: List<Long>) = synchronized(lock) {
-        sentKeys += epochSecondsUtc.map { it.toString() }
+    /** Marks the given composite journal keys as uploaded and persists. */
+    fun markSent(keys: List<String>) = synchronized(lock) {
+        sentKeys += keys
         persist()
     }
 
-    /** Number of journaled (uploaded) timestamps. */
+    /** Number of journaled (uploaded) records. */
     fun sentCount(): Int = synchronized(lock) { sentKeys.size }
 
     // ------------------------------------------------------------------ //

@@ -13,17 +13,6 @@ android {
         versionCode 1
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-        // Debug-only credentials for the Garmin DI-auth live spike
-        // (tefal2garmin-garmin-api-import-j5e.1). Supplied via Gradle
-        // properties and consumed by the hidden long-press trigger in
-        // MainActivity; blank by default so release and normal debug
-        // builds carry no credentials:
-        //   ./gradlew assembleDebug -PGARMINSPIKE_EMAIL=... \
-        //     -PGARMINSPIKE_PASSWORD=... [-PGARMINSPIKE_MFA_CODE=...]
-        buildConfigField "String", "GARMINSPIKE_EMAIL", "\"${project.findProperty('GARMINSPIKE_EMAIL') ?: ''}\""
-        buildConfigField "String", "GARMINSPIKE_PASSWORD", "\"${project.findProperty('GARMINSPIKE_PASSWORD') ?: ''}\""
-        buildConfigField "String", "GARMINSPIKE_MFA_CODE", "\"${project.findProperty('GARMINSPIKE_MFA_CODE') ?: ''}\""
     }
 
     buildFeatures {
@@ -44,6 +33,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Debug-only credentials for the Garmin DI-auth live spike
+            // (tefal2garmin-garmin-api-import-j5e.1). Declared HERE, not in
+            // defaultConfig, so the release BuildConfig does not even carry
+            // the fields. Supplied via Gradle properties and consumed by the
+            // debug source set's GarminAuthSpike (release links a no-op);
+            // blank by default so normal debug builds carry no credentials:
+            //   ./gradlew assembleDebug -PGARMINSPIKE_EMAIL=... \
+            //     -PGARMINSPIKE_PASSWORD=... [-PGARMINSPIKE_MFA_CODE=...]
+            buildConfigField "String", "GARMINSPIKE_EMAIL", "\"${project.findProperty('GARMINSPIKE_EMAIL') ?: ''}\""
+            buildConfigField "String", "GARMINSPIKE_PASSWORD", "\"${project.findProperty('GARMINSPIKE_PASSWORD') ?: ''}\""
+            buildConfigField "String", "GARMINSPIKE_MFA_CODE", "\"${project.findProperty('GARMINSPIKE_MFA_CODE') ?: ''}\""
+        }
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

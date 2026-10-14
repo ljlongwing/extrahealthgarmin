@@ -64,6 +64,12 @@ class GarminRepositoryTest {
             private set
         var lastUploadTokens: GarminTokens? = null
             private set
+        var logoutCalls = 0
+            private set
+
+        override fun logout() {
+            logoutCalls++
+        }
 
         override suspend fun login(email: String, password: String): LoginResult {
             loginCalls++
@@ -88,6 +94,75 @@ class GarminRepositoryTest {
             lastUploadTokens = tokens
             uploadException?.let { throw it }
             return uploadResult
+        }
+    }
+
+    /**
+     * STATEFUL fake mirroring GarminAuthClient's `pendingMfa` gate 1:1: a
+     * second [login] while an MFA flow is pending THROWS, [resumeLogin]
+     * without a pending flow THROWS, a successful resume clears the gate and
+     * [logout] clears it. Every login starts a NEW MFA flow with a distinct
+     * client state (`mfaMethod` = EMAIL-1, EMAIL-2, ...), so tests can tell
+     * which pending flow a resume consumed.
+     *
+     * The stateless [FakeRemote] is exactly why the MFA deadlock of task
+     * tefal2garmin-garmin-api-import-j5e.6 shipped: it happily answered a
+     * second login() after NeedsMfa, which the real client rejects. Every
+     * MFA-path test must run against this fake.
+     */
+    private class StatefulFakeRemote : GarminRemote {
+        private var pendingMfa: MfaClientState? = null
+        private var mfaFlowsStarted = 0
+
+        var resumeTokens: GarminTokens = TOKENS
+        var loginCalls = 0
+            private set
+        var resumeCalls = 0
+            private set
+        var logoutCalls = 0
+            private set
+        var uploadCalls = 0
+            private set
+        var lastResumeState: MfaClientState? = null
+            private set
+        var lastResumeCode: String? = null
+            private set
+
+        override suspend fun login(email: String, password: String): LoginResult {
+            // Same gate as GarminAuthClient.login (GarminAuthClient.kt:93-97).
+            if (pendingMfa != null) {
+                throw GarminAuthError(
+                    "MFA login already in progress; complete it with resumeLogin() or call logout() first"
+                )
+            }
+            loginCalls++
+            val state = MfaClientState(mfaMethod = "EMAIL-${++mfaFlowsStarted}")
+            pendingMfa = state
+            return LoginResult.NeedsMfa(state)
+        }
+
+        override suspend fun resumeLogin(clientState: MfaClientState, code: String): GarminTokens {
+            if (pendingMfa == null) {
+                throw GarminAuthError("No pending MFA login; start one with login() first")
+            }
+            resumeCalls++
+            lastResumeState = clientState
+            lastResumeCode = code
+            pendingMfa = null
+            return resumeTokens
+        }
+
+        override suspend fun uploadWeighIns(
+            records: List<GarminWeighInRecord>,
+            tokens: GarminTokens
+        ): UploadResult {
+            uploadCalls++
+            return UploadResult.Success(records.size)
+        }
+
+        override fun logout() {
+            logoutCalls++
+            pendingMfa = null
         }
     }
 
@@ -153,6 +228,10 @@ class GarminRepositoryTest {
         return format.parse(date)!!.time / 1000L
     }
 
+    /** Composite journal key of a [row]-shaped record (see GarminWeighInRecord.journalKey). */
+    private fun keyOf(date: String, weightKg: Float = 79.65f): String =
+        GarminWeighInRecord(epochOf(date), weightKg, null, null).journalKey()
+
     // ------------------------------------------------------------------ //
     //  Login                                                              //
     // ------------------------------------------------------------------ //
@@ -187,6 +266,72 @@ class GarminRepositoryTest {
         assertEquals(mfaState, remote.lastResumeState)
         assertEquals("123456", remote.lastResumeCode)
         assertEquals(TOKENS, tokenStore.load())
+    }
+
+    /**
+     * Pins the CRITICAL MFA deadlock (task .6 finding 1) against a fake that
+     * models the real client's pendingMfa gate: after login() returned
+     * NeedsMfa, entering the code must complete via resumeLogin on the STORED
+     * client state — never by calling login() again (the real client throws
+     * "MFA login already in progress" there, which deadlocked the dialog).
+     */
+    @Test
+    fun `stateful_fake_mfa_code_entry_completes_via_resume`() = runTest {
+        val statefulRemote = StatefulFakeRemote()
+        val repository = GarminRepository(
+            statefulRemote,
+            GarminTokenStore(InMemoryTokenPersistence(), PlainTextCrypto()),
+            UploadJournal(InMemoryJournalPersistence())
+        )
+
+        val first = repository.login("dmitry@example.com", "s3cret")
+        assertTrue("expected NeedsMfa, was $first", first is LoginStatus.NeedsMfa)
+        assertEquals(1, statefulRemote.loginCalls)
+        assertEquals(0, statefulRemote.resumeCalls)
+
+        val second = repository.login("dmitry@example.com", "s3cret", "123456")
+
+        assertTrue("code entry after MFA_REQUIRED must complete via resume, was $second", second is LoginStatus.Success)
+        assertEquals("code entry must NOT restart login() (the real client gates it)", 1, statefulRemote.loginCalls)
+        assertEquals(1, statefulRemote.resumeCalls)
+        assertEquals("the STORED client state (EMAIL-1) must be resumed", "EMAIL-1", statefulRemote.lastResumeState?.mfaMethod)
+        assertEquals("123456", statefulRemote.lastResumeCode)
+        assertTrue("tokens must be persisted after the MFA resume", repository.hasStoredToken())
+    }
+
+    /**
+     * Resend-code path: with a pending MFA flow the repository must clear the
+     * client gate via logout() before re-running login(), and the code typed
+     * after the resend must resume the NEW flow's client state.
+     */
+    @Test
+    fun `resend_code_relogin_after_logout_completes`() = runTest {
+        val statefulRemote = StatefulFakeRemote()
+        val repository = GarminRepository(
+            statefulRemote,
+            GarminTokenStore(InMemoryTokenPersistence(), PlainTextCrypto()),
+            UploadJournal(InMemoryJournalPersistence())
+        )
+
+        repository.login("dmitry@example.com", "s3cret")
+
+        // Resend = login again with the same credentials and no code.
+        val resend = repository.login("dmitry@example.com", "s3cret")
+
+        assertTrue("resend must restart the MFA flow, was $resend", resend is LoginStatus.NeedsMfa)
+        assertEquals("resend must clear the client's pendingMfa gate via logout()", 1, statefulRemote.logoutCalls)
+        assertEquals("resend must run a fresh login() after the logout", 2, statefulRemote.loginCalls)
+
+        val done = repository.login("dmitry@example.com", "s3cret", "654321")
+
+        assertTrue("code entry after resend must complete, was $done", done is LoginStatus.Success)
+        assertEquals(1, statefulRemote.resumeCalls)
+        assertEquals(
+            "the SECOND (post-resend) client state must be resumed, was ${statefulRemote.lastResumeState}",
+            "EMAIL-2",
+            statefulRemote.lastResumeState?.mfaMethod
+        )
+        assertTrue(repository.hasStoredToken())
     }
 
     @Test
@@ -228,7 +373,7 @@ class GarminRepositoryTest {
     fun `upload_not_needed_when_journal_covers_all`() = runTest {
         // No token stored on purpose: NotNeeded must be decided BEFORE the
         // token check, and must touch no network at all.
-        journal.markSent(listOf(epochOf("2025-10-25"), epochOf("2025-10-26")))
+        journal.markSent(listOf(keyOf("2025-10-25"), keyOf("2025-10-26")))
 
         val outcome = repository.uploadNewFromCsv(
             garminCsv(row("2025-10-25"), row("2025-10-26"))
@@ -267,8 +412,8 @@ class GarminRepositoryTest {
         )
         assertEquals("stored tokens drive the upload", TOKENS, remote.lastUploadTokens)
         assertEquals("all confirmed records journaled", 2, journal.sentCount())
-        assertTrue(journalPersistence.stored!!.contains("\"${epochOf("2025-10-25")}\""))
-        assertTrue(journalPersistence.stored!!.contains("\"${epochOf("2025-10-26")}\""))
+        assertTrue(journalPersistence.stored!!.contains("\"${keyOf("2025-10-25")}\""))
+        assertTrue(journalPersistence.stored!!.contains("\"${keyOf("2025-10-26")}\""))
 
         // Re-sharing the same CSV is now a no-op.
         val second = repository.uploadNewFromCsv(csv)
@@ -283,7 +428,7 @@ class GarminRepositoryTest {
         val d2 = epochOf("2025-10-26")
         val d3 = epochOf("2025-10-27")
         remote.uploadResult = UploadResult.Partial(
-            succeededKeys = listOf(d1),
+            succeededKeys = listOf("$d1:79.65"),
             failureMessages = listOf("Row 2 rejected", "Row 3 rejected")
         )
 
@@ -304,9 +449,9 @@ class GarminRepositoryTest {
 
         // Only the provably imported record is journaled.
         assertEquals(1, journal.sentCount())
-        assertTrue("confirmed key must be journaled", journalPersistence.stored!!.contains("\"$d1\""))
-        assertFalse("unconfirmed keys must NOT be journaled: ${journalPersistence.stored}", journalPersistence.stored!!.contains("\"$d2\""))
-        assertFalse(journalPersistence.stored!!.contains("\"$d3\""))
+        assertTrue("confirmed key must be journaled", journalPersistence.stored!!.contains("\"$d1:79.65\""))
+        assertFalse("unconfirmed keys must NOT be journaled: ${journalPersistence.stored}", journalPersistence.stored!!.contains("\"$d2:"))
+        assertFalse(journalPersistence.stored!!.contains("\"$d3:"))
 
         // The residual CSV round-trips through the schema to exactly the unmarked rows.
         assertEquals(
@@ -404,6 +549,68 @@ class GarminRepositoryTest {
         assertEquals("range check must run BEFORE any network call", 0, remote.uploadCalls)
         assertEquals(0, remote.loginCalls)
         assertEquals(0, journal.sentCount())
+    }
+
+    /**
+     * Finding .6-3: the cancel path must hand out the journal-FILTERED
+     * residual, not the full conversion — rows already confirmed imported
+     * must not re-enter the manual Downloads/browser flow.
+     */
+    @Test
+    fun `cancel_residual_is_journal_filtered`() = runTest {
+        // Half the rows are already journaled (confirmed imported earlier).
+        journal.markSent(listOf(keyOf("2025-10-25")))
+
+        val outcome = repository.fallbackResidual(
+            garminCsv(row("2025-10-25"), row("2025-10-26")),
+            reason = "Login cancelled"
+        )
+
+        assertTrue("expected Fallback, was $outcome", outcome is UploadOutcome.Fallback)
+        val fallback = outcome as UploadOutcome.Fallback
+        assertEquals("Login cancelled", fallback.reason)
+        assertEquals("only the UN-journaled row stays in the residual", 1, fallback.residualCount)
+        assertEquals(
+            "residual must contain only the row the journal does not cover",
+            listOf(epochOf("2025-10-26")),
+            GarminCsvParser.parse(fallback.residualCsv).map { it.record.epochSecondsUtc }
+        )
+        assertEquals("cancel path must touch no network", 0, remote.uploadCalls)
+        assertEquals("cancel path must not journal anything", 1, journal.sentCount())
+    }
+
+    /**
+     * Composite journal key (`epochSecondsUtc:weightKg`, task .6 decision):
+     * a same-day second measurement with a different weight uploads too,
+     * while an identical re-record (same timestamp AND weight) dedupes.
+     */
+    @Test
+    fun `same_day_second_measurement_uploads_and_identical_rerecord_deduped`() = runTest {
+        tokenStore.save(TOKENS)
+        val morning = row("2025-10-25")                    // 79.65 kg
+        val evening = row("2025-10-25", weight = "80.25") // same day, different weight
+        val csv = garminCsv(morning, evening, morning)    // third row = identical re-record
+
+        val outcome = repository.uploadNewFromCsv(csv)
+
+        assertTrue("expected Success, was $outcome", outcome is UploadOutcome.Success)
+        assertEquals(
+            "same-day second measurement must upload too (composite key)",
+            2,
+            (outcome as UploadOutcome.Success).uploadedCount
+        )
+        assertEquals(
+            "intra-batch identical re-record deduped to the first occurrence",
+            listOf(epochOf("2025-10-25"), epochOf("2025-10-25")),
+            remote.lastUploadRecords!!.map { it.epochSecondsUtc }
+        )
+        assertEquals(listOf(79.65f, 80.25f), remote.lastUploadRecords!!.map { it.weightKg })
+        assertEquals("both distinct measurements journaled", 2, journal.sentCount())
+
+        // Re-sharing the identical CSV is now a no-op.
+        val second = repository.uploadNewFromCsv(csv)
+        assertTrue("identical re-record must dedup against the journal", second is UploadOutcome.NotNeeded)
+        assertEquals("no second upload", 1, remote.uploadCalls)
     }
 
     // ------------------------------------------------------------------ //

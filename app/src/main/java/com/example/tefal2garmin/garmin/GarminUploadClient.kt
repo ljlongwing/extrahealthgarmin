@@ -21,14 +21,14 @@ sealed class UploadResult {
     /**
      * Garmin reported per-record failures via `detailedImportResult.failures`.
      *
-     * [succeededKeys] lists the epoch-second UTC keys of records that are
-     * provably imported — it is EMPTY whenever the failure entries carry no
+     * [succeededKeys] lists the composite journal keys
+     * ([GarminWeighInRecord.journalKey]) of records that are provably imported — it is EMPTY whenever the failure entries carry no
      * correlatable record index (conservative by design: the caller journals
      * only provable successes and routes everything else to the fallback
      * CSV). Never guess success.
      */
     data class Partial(
-        val succeededKeys: List<Long>,
+        val succeededKeys: List<String>,
         val failureMessages: List<String>
     ) : UploadResult()
 }
@@ -193,7 +193,7 @@ class GarminUploadClient(
         val succeededKeys = if (allCorrelatable) {
             records.indices
                 .filter { it !in failedIndices }
-                .map { records[it].epochSecondsUtc }
+                .map { records[it].journalKey() }
         } else {
             emptyList()
         }

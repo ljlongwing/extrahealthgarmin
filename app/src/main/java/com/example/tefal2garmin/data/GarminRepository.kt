@@ -21,6 +21,8 @@ import com.example.tefal2garmin.utils.CsvFieldMapper
 import com.example.tefal2garmin.utils.CsvLineParser
 import com.example.tefal2garmin.utils.GarminCsvSchema
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -74,6 +76,15 @@ sealed class UploadOutcome {
 interface GarminUploadOrchestrator {
     suspend fun login(email: String, password: String, mfaCode: String? = null): LoginStatus
     suspend fun uploadNewFromCsv(csvData: String): UploadOutcome
+
+    /**
+     * Cancel/exception fallback: the journal-filtered residual of [csvData]
+     * (only the rows that were never confirmed uploaded), wrapped as a
+     * [UploadOutcome.Fallback] with [reason]. Reads the journal but never
+     * touches the network and never journals anything.
+     */
+    suspend fun fallbackResidual(csvData: String, reason: String): UploadOutcome.Fallback
+
     fun hasStoredToken(): Boolean
 }
 
@@ -90,6 +101,13 @@ internal interface GarminRemote {
         records: List<GarminWeighInRecord>,
         tokens: GarminTokens
     ): UploadResult
+
+    /**
+     * Discards any pending MFA flow on the underlying auth client, exactly
+     * like [com.example.tefal2garmin.garmin.GarminAuthClient.logout]. Needed
+     * before a fresh [login] can restart an MFA flow (the "resend code" path).
+     */
+    fun logout()
 }
 
 /** Production [GarminRemote]: the real HTTP clients over one shared auth session. */
@@ -108,6 +126,8 @@ internal class HttpGarminRemote(
         records: List<GarminWeighInRecord>,
         tokens: GarminTokens
     ): UploadResult = uploadClient.uploadWeighIns(records, tokens)
+
+    override fun logout() = authClient.logout()
 }
 
 /**
@@ -163,7 +183,7 @@ internal object GarminCsvParser {
 
         val rows = mutableListOf<ParsedWeighInRow>()
         while (index < lines.size) {
-            parseRow(lines[index], columns, expectedFieldCount, lineParser)?.let { rows += it }
+            parseRow(lines[index], index, columns, expectedFieldCount, lineParser)?.let { rows += it }
             index++
         }
         return rows
@@ -193,13 +213,14 @@ internal object GarminCsvParser {
 
     private fun parseRow(
         line: String,
+        rowIndex: Int,
         columns: Map<String, Int>,
         expectedFieldCount: Int,
         lineParser: CsvLineParser
     ): ParsedWeighInRow? {
         val values = lineParser.parseCsvLine(line)
         if (values.size != expectedFieldCount) {
-            Log.w(TAG, "Skipping row with ${values.size} fields (expected $expectedFieldCount): $line")
+            Log.w(TAG, "Skipping row $rowIndex: ${values.size} fields (expected $expectedFieldCount)")
             return null
         }
 
@@ -210,7 +231,8 @@ internal object GarminCsvParser {
             ?.let { CsvFieldMapper.normalizeDate(it) }
             ?: return null
         val epochSecondsUtc = dateToEpochSecondsUtc(date) ?: run {
-            Log.w(TAG, "Skipping row with unparseable date: $line")
+            // Health PII: log the row index and reason only, never row content.
+            Log.w(TAG, "Skipping row $rowIndex: unparseable date")
             return null
         }
 
@@ -218,7 +240,8 @@ internal object GarminCsvParser {
             ?.let { CsvFieldMapper.normalizeWeight(it) }
             ?: return null
         val weightKg = weightText.toFloatOrNull() ?: run {
-            Log.w(TAG, "Skipping row with unparseable weight: $line")
+            // Health PII: log the row index and reason only, never row content.
+            Log.w(TAG, "Skipping row $rowIndex: unparseable weight")
             return null
         }
 
@@ -282,6 +305,15 @@ class GarminRepository internal constructor(
         journal = UploadJournal.inFilesDir(context.filesDir)
     )
 
+    /**
+     * Client state of the MFA flow returned by the last [login] that answered
+     * NeedsMfa, or null. Remembered here because the real client keeps the
+     * flow alive in its own `pendingMfa` (a second `login` throws) — the
+     * resume must reuse THIS state, and a resend must `logout()` first.
+     */
+    @Volatile
+    private var pendingMfaClientState: MfaClientState? = null
+
     // ------------------------------------------------------------------ //
     //  GarminUploadOrchestrator                                           //
     // ------------------------------------------------------------------ //
@@ -289,41 +321,92 @@ class GarminRepository internal constructor(
     override fun hasStoredToken(): Boolean = tokenStore.load() != null
 
     override suspend fun login(email: String, password: String, mfaCode: String?): LoginStatus =
-        try {
-            when (val result = remote.login(email, password)) {
-                is LoginResult.NeedsMfa ->
-                    if (mfaCode == null) {
-                        LoginStatus.NeedsMfa
-                    } else {
-                        val tokens = remote.resumeLogin(result.clientState, mfaCode)
+        withContext(Dispatchers.IO) {
+            try {
+                val pending = pendingMfaClientState
+                when {
+                    // Code entry after MFA_REQUIRED: resume the STORED flow —
+                    // calling login() again is deadlocked by the auth client's
+                    // pendingMfa gate ("MFA login already in progress").
+                    mfaCode != null && pending != null -> {
+                        val tokens = remote.resumeLogin(pending, mfaCode)
+                        pendingMfaClientState = null
                         tokenStore.save(tokens)
                         LoginStatus.Success
                     }
-                is LoginResult.Success -> {
-                    tokenStore.save(result.tokens)
+                    // Resend code with a pending flow: the client gate must be
+                    // cleared first, then a fresh login restarts the MFA flow.
+                    pending != null -> {
+                        remote.logout()
+                        pendingMfaClientState = null
+                        freshLogin(email, password, mfaCode)
+                    }
+                    else -> freshLogin(email, password, mfaCode)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Login failed: ${reasonOf(e)}")
+                LoginStatus.Failed(reasonOf(e))
+            }
+        }
+
+    /**
+     * Plain login attempt (no pending MFA flow). A NeedsMfa answer stores the
+     * client state so a later code entry can resume this exact flow; a failed
+     * resume keeps it, so the user may retry with a corrected code.
+     */
+    private suspend fun freshLogin(email: String, password: String, mfaCode: String?): LoginStatus {
+        return when (val result = remote.login(email, password)) {
+            is LoginResult.NeedsMfa -> {
+                pendingMfaClientState = result.clientState
+                if (mfaCode == null) {
+                    LoginStatus.NeedsMfa
+                } else {
+                    // A code was supplied together with the credentials: resume
+                    // the flow this very login just started.
+                    val tokens = remote.resumeLogin(result.clientState, mfaCode)
+                    pendingMfaClientState = null
+                    tokenStore.save(tokens)
                     LoginStatus.Success
                 }
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Login failed: ${reasonOf(e)}")
-            LoginStatus.Failed(reasonOf(e))
+            is LoginResult.Success -> {
+                pendingMfaClientState = null
+                tokenStore.save(result.tokens)
+                LoginStatus.Success
+            }
         }
+    }
 
     override suspend fun uploadNewFromCsv(csvData: String): UploadOutcome =
-        try {
-            uploadNewRecords(csvData)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Unreachable by construction (every step below handles its own
-            // failures) — kept so the interface can never throw.
-            Log.w(TAG, "Upload failed unexpectedly", e)
+        withContext(Dispatchers.IO) {
+            try {
+                uploadNewRecords(csvData)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Unreachable by construction (every step below handles its own
+                // failures) — kept so the interface can never throw.
+                Log.w(TAG, "Upload failed unexpectedly", e)
+                UploadOutcome.Fallback(
+                    residualCsv = csvData,
+                    residualCount = 0,
+                    reason = "Unexpected error: ${reasonOf(e)}"
+                )
+            }
+        }
+
+    override suspend fun fallbackResidual(csvData: String, reason: String): UploadOutcome.Fallback =
+        withContext(Dispatchers.IO) {
+            val rows = GarminCsvParser.parse(csvData)
+            val newRecords = journal.filterNew(rows.map { it.record })
+            val newRows = rowsMatchingNewRecords(rows, newRecords)
+            Log.d(TAG, "Fallback residual: ${newRows.size} of ${rows.size} rows not covered by the journal")
             UploadOutcome.Fallback(
-                residualCsv = csvData,
-                residualCount = 0,
-                reason = "Unexpected error: ${reasonOf(e)}"
+                residualCsv = residualCsv(newRows),
+                residualCount = newRows.size,
+                reason = reason
             )
         }
 
@@ -358,7 +441,7 @@ class GarminRepository internal constructor(
         return try {
             when (val result = remote.uploadWeighIns(newRecords, tokens)) {
                 is UploadResult.Success -> {
-                    journal.markSent(newRecords.map { it.epochSecondsUtc })
+                    journal.markSent(newRecords.map { it.journalKey() })
                     Log.d(TAG, "Upload: ${newRecords.size} records confirmed by Garmin")
                     UploadOutcome.Success(newRecords.size)
                 }
@@ -392,7 +475,7 @@ class GarminRepository internal constructor(
     ): UploadOutcome {
         journal.markSent(result.succeededKeys)
         val succeeded = result.succeededKeys.toHashSet()
-        val residualRows = newRows.filter { it.record.epochSecondsUtc !in succeeded }
+        val residualRows = newRows.filter { it.record.journalKey() !in succeeded }
         return UploadOutcome.Partial(
             uploadedCount = newRows.size - residualRows.size,
             residualCsv = residualCsv(residualRows),

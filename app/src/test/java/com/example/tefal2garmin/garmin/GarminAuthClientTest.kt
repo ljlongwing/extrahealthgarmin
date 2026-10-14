@@ -331,6 +331,101 @@ class GarminAuthClientTest {
     }
 
     // ------------------------------------------------------------------ //
+    //  Task .6 additions (audit gaps + wire-contract pins)                //
+    // ------------------------------------------------------------------ //
+
+    /**
+     * The MFA verify request must reuse the SSO session established by the
+     * login POST (Set-Cookie -> Cookie header), or Garmin rejects the code.
+     */
+    @Test
+    fun `mfa_verify_request_carries_sso_session_cookie`() = runBlocking {
+        server.enqueue(
+            jsonResponse(mfaRequiredBody())
+                .addHeader("Set-Cookie", "SESSIONID=abc123; Path=/; HttpOnly")
+        )
+        val result = client.login("user@example.com", "password123")
+        assertTrue("expected NeedsMfa, got $result", result is LoginResult.NeedsMfa)
+
+        // verifyCode -> exchange -> socialProfile validation
+        server.enqueue(jsonResponse(loginSuccessBody(ticket = "ST-MFA-COOKIE")))
+        server.enqueue(jsonResponse(tokenJson(farFutureJwt())))
+        server.enqueue(jsonResponse("""{"displayName":"Test User"}"""))
+
+        client.resumeLogin((result as LoginResult.NeedsMfa).clientState, "123456")
+
+        server.takeRequest() // login (received the Set-Cookie)
+        val verify = server.takeRequest()
+        val cookie = verify.getHeader("Cookie")
+        assertTrue(
+            "MFA verify must carry the SSO session cookie from login, got: $cookie",
+            cookie != null && cookie.contains("SESSIONID=abc123")
+        )
+    }
+
+    /** All four ladder client ids rejected with 400 -> auth error, no retry. */
+    @Test
+    fun `exchange_ladder_exhaustion_4x400_raises_auth_error`() = runBlocking {
+        server.enqueue(jsonResponse(loginSuccessBody()))
+        repeat(4) {
+            server.enqueue(
+                MockResponse().setResponseCode(400)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"error":"invalid_grant"}""")
+            )
+        }
+
+        try {
+            client.login("user@example.com", "password123")
+            fail("expected GarminAuthError after the client-id ladder is exhausted")
+        } catch (e: GarminAuthError) {
+            assertTrue("message must name the ladder failure: ${e.message}",
+                e.message!!.contains("all client IDs"))
+        }
+        assertEquals("1 login + all 4 ladder attempts, nothing retried", 5, server.requestCount)
+    }
+
+    /**
+     * A dead refresh token (400 invalid_grant) on the forced 401-refresh is
+     * an auth error and is never retried.
+     */
+    @Test
+    fun `refresh_400_invalid_grant_raises_auth_error_no_retry`() = runBlocking {
+        val tokens = GarminTokens(farFutureJwt(), "rt-dead", CLIENT_ID_2025Q2)
+        server.enqueue(jsonResponse("", code = 401))
+        server.enqueue(
+            MockResponse().setResponseCode(400)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"error":"invalid_grant"}""")
+        )
+
+        try {
+            client.apiGet(tokens, "/userprofile-service/socialProfile")
+            fail("expected GarminAuthError for the dead refresh token")
+        } catch (e: GarminAuthError) {
+            assertTrue("message must name the refresh failure: ${e.message}",
+                e.message!!.contains("refresh"))
+        }
+        assertEquals("1 API attempt + 1 refresh, never retried", 2, server.requestCount)
+    }
+
+    /** 429 on the refresh call surfaces immediately (single request). */
+    @Test
+    fun `refresh_429_surfaces_immediately`() = runBlocking {
+        val expiring =
+            GarminTokens(fakeJwt(System.currentTimeMillis() / 1000 + 600), "rt", CLIENT_ID_2025Q2)
+        server.enqueue(MockResponse().setResponseCode(429).setBody("too many requests"))
+
+        try {
+            client.apiGet(expiring, "/userprofile-service/socialProfile")
+            fail("expected GarminTooManyRequestsError")
+        } catch (e: GarminTooManyRequestsError) {
+            assertTrue(e.message!!.contains("429"))
+        }
+        assertEquals("429 on refresh must surface after ONE request", 1, server.requestCount)
+    }
+
+    // ------------------------------------------------------------------ //
     //  Helpers                                                            //
     // ------------------------------------------------------------------ //
 

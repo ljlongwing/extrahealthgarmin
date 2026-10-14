@@ -47,8 +47,14 @@ data class GarminWeighInRecord(
         }
     }
 
-    /** Journal key for this record: the epoch-second UTC string. */
-    fun journalKey(): String = epochSecondsUtc.toString()
+    /**
+     * Journal key for this record: the composite `epochSecondsUtc:weightKg`.
+     *
+     * The timestamp alone (date-granular) silently dropped a same-day second
+     * measurement with a different weight; the composite key uploads it too,
+     * while an identical re-record (same timestamp AND weight) still dedupes.
+     */
+    fun journalKey(): String = "$epochSecondsUtc:$weightKg"
 
     companion object {
         const val MAX_WEIGHT_KG = 500f
