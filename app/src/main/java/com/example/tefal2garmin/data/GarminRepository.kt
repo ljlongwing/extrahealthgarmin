@@ -78,6 +78,15 @@ interface GarminUploadOrchestrator {
     suspend fun uploadNewFromCsv(csvData: String): UploadOutcome
 
     /**
+     * Records-based upload (Strangler phase 1a): deduplicates [records]
+     * against the journal, uploads the new ones as one batch and reports a
+     * [UploadOutcomeRecords]. Same contract as [uploadNewFromCsv] minus the
+     * residual CSV — unconfirmed records simply stay un-journaled and are
+     * retried by the next call. Never throws.
+     */
+    suspend fun uploadNewRecords(records: List<GarminWeighInRecord>): UploadOutcomeRecords
+
+    /**
      * Cancel/exception fallback: the journal-filtered residual of [csvData]
      * (only the rows that were never confirmed uploaded), wrapped as a
      * [UploadOutcome.Fallback] with [reason]. Reads the journal but never
@@ -408,6 +417,75 @@ class GarminRepository internal constructor(
                 residualCount = newRows.size,
                 reason = reason
             )
+        }
+
+    /**
+     * Records-based upload — the CSV-free twin of the private
+     * [uploadNewRecords] below, mapping every case exactly like the CSV path
+     * (Strangler phase 1a). No residual CSV is produced: unconfirmed records
+     * stay un-journaled, so the next call retries exactly them.
+     */
+    override suspend fun uploadNewRecords(records: List<GarminWeighInRecord>): UploadOutcomeRecords =
+        withContext(Dispatchers.IO) {
+            val newRecords = journal.filterNew(records)
+            if (newRecords.isEmpty()) {
+                Log.d(TAG, "Upload: journal covers every record - skipping network")
+                return@withContext UploadOutcomeRecords.NotNeeded
+            }
+
+            val tokens = tokenStore.load()
+            if (tokens == null) {
+                Log.d(TAG, "Upload: no stored DI tokens - login required")
+                return@withContext UploadOutcomeRecords.LoginRequired
+            }
+
+            // Range validation BEFORE any network call: the FIT uint16 field
+            // scales would silently truncate out-of-range floats.
+            try {
+                GarminWeighInRecord.validateRanges(newRecords)
+            } catch (e: GarminValidationError) {
+                return@withContext UploadOutcomeRecords.Retryable(
+                    e.message ?: "Value outside plausible range"
+                )
+            }
+
+            try {
+                when (val result = remote.uploadWeighIns(newRecords, tokens)) {
+                    is UploadResult.Success -> {
+                        journal.markSent(newRecords.map { it.journalKey() })
+                        Log.d(TAG, "Upload: ${newRecords.size} records confirmed by Garmin")
+                        UploadOutcomeRecords.Success(newRecords.size)
+                    }
+                    is UploadResult.Partial -> {
+                        // Journal ONLY the provably imported keys, exactly like
+                        // the CSV path; everything else stays retriable.
+                        journal.markSent(result.succeededKeys)
+                        val succeeded = result.succeededKeys.toHashSet()
+                        UploadOutcomeRecords.Partial(
+                            uploadedCount = newRecords.count { it.journalKey() in succeeded },
+                            failureMessages = result.failureMessages
+                        )
+                    }
+                }
+            } catch (e: GarminAuthError) {
+                Log.w(TAG, "Upload: auth rejected (${reasonOf(e)}) - clearing stored tokens")
+                tokenStore.clear()
+                UploadOutcomeRecords.LoginRequired
+            } catch (e: GarminTooManyRequestsError) {
+                UploadOutcomeRecords.Retryable(reasonOf(e))
+            } catch (e: GarminConnectionError) {
+                UploadOutcomeRecords.Retryable(reasonOf(e))
+            } catch (e: GarminValidationError) {
+                // Defensive: the client re-validates before encoding; nothing was sent.
+                UploadOutcomeRecords.Retryable(reasonOf(e))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Unreachable by construction — kept so the interface can
+                // never throw, exactly like the CSV path's outer guard.
+                Log.w(TAG, "Upload failed unexpectedly", e)
+                UploadOutcomeRecords.Retryable("Unexpected error: ${reasonOf(e)}")
+            }
         }
 
     // ------------------------------------------------------------------ //
