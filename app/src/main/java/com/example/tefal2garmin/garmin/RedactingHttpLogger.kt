@@ -58,8 +58,11 @@ class RedactingHttpLogger : Interceptor {
         private const val MAX_BODY_LOG_BYTES = 64 * 1024L
 
         // JSON string values: {"password": "..."} / {"di_token":"..."} etc.
+        // serviceTicketId is the camelCase form Garmin's login RESPONSE uses
+        // (found in the live spike: request-side snake_case was redacted, the
+        // response-side ticket leaked) — one-time CAS ticket, still a secret.
         private val JSON_SECRET_VALUE_REGEX = Regex(
-            """("(?:password|mfaVerificationCode|refresh_token|service_ticket|di_token|access_token)"\s*:\s*")[^"]*(")""",
+            """("(?:password|mfaVerificationCode|refresh_token|service_ticket|serviceTicketId|di_token|access_token)"\s*:\s*")[^"]*(")""",
             RegexOption.IGNORE_CASE
         )
 

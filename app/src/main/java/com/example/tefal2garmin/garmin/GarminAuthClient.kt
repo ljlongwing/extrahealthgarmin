@@ -1,7 +1,6 @@
 package com.example.tefal2garmin.garmin
 
 import android.util.Log
-import com.example.tefal2garmin.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -17,11 +16,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONException
 import org.json.JSONObject
-import java.io.IOException
-import java.util.concurrent.TimeUnit
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.random.Random
 
 /** DI OAuth2 tokens returned by a successful login/refresh. */
 data class GarminTokens(
@@ -83,14 +79,7 @@ class GarminAuthClient(
     private val apiBackoffDelayMs: (attempt: Int) -> Long = { defaultApiBackoffDelayMs(it) }
 ) {
 
-    private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .apply {
-            if (BuildConfig.DEBUG) {
-                addInterceptor(RedactingHttpLogger())
-            }
-        }
-        .build()
+    private val httpClient: OkHttpClient = GarminHttp.newHttpClient()
 
     /** In-flight MFA state (client with the SSO session cookies + method). */
     private var pendingMfa: PendingMfa? = null
@@ -128,13 +117,13 @@ class GarminAuthClient(
             )
             .build()
         Log.d(TAG, "Login: POST $LOGIN_PATH")
-        val call = execute(ssoClient, request)
+        val call = GarminHttp.execute(ssoClient, request)
         if (call.code == HTTP_TOO_MANY_REQUESTS) {
             throw GarminTooManyRequestsError(
                 "Mobile login returned 429 - rate limited or blocked by Garmin"
             )
         }
-        val json = parseJsonBody("Mobile login", call)
+        val json = GarminHttp.parseJsonBody("Mobile login", call)
         handleLoginResponse(call, json, ssoClient)
     }
 
@@ -166,11 +155,11 @@ class GarminAuthClient(
                     )
                 )
                 .build()
-            val call = execute(pending.ssoClient, request)
+            val call = GarminHttp.execute(pending.ssoClient, request)
             if (call.code == HTTP_TOO_MANY_REQUESTS) {
                 throw GarminTooManyRequestsError("MFA verification returned 429")
             }
-            val json = parseJsonBody("MFA verification", call)
+            val json = GarminHttp.parseJsonBody("MFA verification", call)
             val responseType = json.optJSONObject("responseStatus")?.optString("type").orEmpty()
             when {
                 responseType == "SUCCESSFUL" -> {
@@ -211,6 +200,16 @@ class GarminAuthClient(
     }
 
     /**
+     * Forces a DI token refresh regardless of JWT expiry. Package-internal:
+     * [GarminUploadClient] calls this exactly once after an HTTP 401 (its
+     * wire contract: one refresh, then one retry). Refresh failures throw
+     * [GarminAuthError] (the caller clears the token store) and are never
+     * retried.
+     */
+    internal suspend fun forceRefresh(tokens: GarminTokens): GarminTokens =
+        refreshTokens(tokens)
+
+    /**
      * Authenticated API GET with the native GCM-Android headers.
      *
      * Refreshes once on expiry and retries once after a 401; retries with
@@ -225,7 +224,7 @@ class GarminAuthClient(
             while (true) {
                 attempt++
                 val call = try {
-                    execute(httpClient, apiGetRequest(current, path))
+                    GarminHttp.execute(httpClient, apiGetRequest(current, path))
                 } catch (e: GarminConnectionError) {
                     if (attempt < API_MAX_ATTEMPTS) {
                         backoffAndWait(attempt, path)
@@ -261,7 +260,7 @@ class GarminAuthClient(
     // ------------------------------------------------------------------ //
 
     private suspend fun handleLoginResponse(
-        call: HttpCallResult,
+        call: GarminHttp.HttpCallResult,
         json: JSONObject,
         ssoClient: OkHttpClient
     ): LoginResult {
@@ -320,14 +319,14 @@ class GarminAuthClient(
                     .header("Authorization", Credentials.basic(clientId, ""))
                     .header("Accept", "application/json,text/html;q=0.9,*/*;q=0.8")
                     .header("Cache-Control", "no-cache")
-                    .apply { addNativeHeaders(this) }
+                    .apply { GarminHttp.addNativeHeaders(this) }
                     .post(form)
                     .build()
-                val call = execute(httpClient, request)
+                val call = GarminHttp.execute(httpClient, request)
                 if (call.code == HTTP_TOO_MANY_REQUESTS) {
                     throw GarminTooManyRequestsError("DI token exchange rate limited (HTTP 429)")
                 }
-                if (looksLikeHtml(call)) {
+                if (GarminHttp.looksLikeHtml(call)) {
                     throw GarminConnectionError(
                         "DI token exchange: HTML challenge response (HTTP ${call.code}) - " +
                             "likely Cloudflare/TLS-fingerprint block"
@@ -345,7 +344,10 @@ class GarminAuthClient(
             throw GarminAuthError("DI token exchange failed for all client IDs (last HTTP $lastCode)")
         }
 
-    private fun parseExchangePayload(call: HttpCallResult, clientId: String): GarminTokens? {
+    private fun parseExchangePayload(
+        call: GarminHttp.HttpCallResult,
+        clientId: String
+    ): GarminTokens? {
         return runCatching {
             val json = JSONObject(call.bodyText)
             val accessToken = json.getString(ACCESS_TOKEN_KEY)
@@ -377,14 +379,14 @@ class GarminAuthClient(
                 .header("Authorization", Credentials.basic(tokens.diClientId, ""))
                 .header("Accept", "application/json")
                 .header("Cache-Control", "no-cache")
-                .apply { addNativeHeaders(this) }
+                .apply { GarminHttp.addNativeHeaders(this) }
                 .post(form)
                 .build()
-            val call = execute(httpClient, request)
+            val call = GarminHttp.execute(httpClient, request)
             if (call.code == HTTP_TOO_MANY_REQUESTS) {
                 throw GarminTooManyRequestsError("DI token refresh rate limited (HTTP 429)")
             }
-            if (looksLikeHtml(call)) {
+            if (GarminHttp.looksLikeHtml(call)) {
                 throw GarminConnectionError(
                     "DI token refresh: HTML challenge response (HTTP ${call.code}) - " +
                         "likely Cloudflare/TLS-fingerprint block"
@@ -467,8 +469,6 @@ class GarminAuthClient(
     //  HTTP plumbing                                                      //
     // ------------------------------------------------------------------ //
 
-    private class HttpCallResult(val code: Int, val contentType: String?, val bodyText: String)
-
     private class PendingMfa internal constructor(
         val ssoClient: OkHttpClient,
         val mfaMethod: String
@@ -490,48 +490,6 @@ class GarminAuthClient(
             cookies.values.filter { it.matches(url) }
     }
 
-    private fun execute(client: OkHttpClient, request: Request): HttpCallResult {
-        return try {
-            client.newCall(request).execute().use { response ->
-                HttpCallResult(
-                    code = response.code,
-                    contentType = response.header("Content-Type"),
-                    bodyText = response.body?.string().orEmpty()
-                )
-            }
-        } catch (e: IOException) {
-            throw GarminConnectionError(
-                "Network failure during ${request.method} ${request.url.encodedPath}: ${e.message}", e
-            )
-        }
-    }
-
-    /**
-     * JSON parser with the Cloudflare guard: an HTML response (by
-     * Content-Type or first byte) maps to [GarminConnectionError], never to a
-     * JSON parse crash; malformed JSON maps to [GarminConnectionError] too.
-     */
-    private fun parseJsonBody(stage: String, call: HttpCallResult): JSONObject {
-        if (looksLikeHtml(call)) {
-            throw GarminConnectionError(
-                "$stage: HTML challenge response (HTTP ${call.code}) - " +
-                    "likely Cloudflare/TLS-fingerprint block"
-            )
-        }
-        return try {
-            JSONObject(call.bodyText)
-        } catch (e: JSONException) {
-            throw GarminConnectionError(
-                "$stage: malformed JSON response (HTTP ${call.code})", e
-            )
-        }
-    }
-
-    private fun looksLikeHtml(call: HttpCallResult): Boolean {
-        val htmlContentType = call.contentType?.contains("text/html", ignoreCase = true) == true
-        return htmlContentType || call.bodyText.trimStart().startsWith("<")
-    }
-
     private fun ssoUrl(path: String): HttpUrl =
         "$ssoBaseUrl$path".toHttpUrl().newBuilder()
             .addQueryParameter("clientId", SSO_CLIENT_ID)
@@ -544,21 +502,9 @@ class GarminAuthClient(
             .url("$apiBaseUrl$path")
             .header("Authorization", "Bearer ${tokens.diToken}")
             .header("Accept", "application/json")
-            .apply { addNativeHeaders(this) }
+            .apply { GarminHttp.addNativeHeaders(this) }
             .get()
             .build()
-
-    private fun addNativeHeaders(builder: Request.Builder) {
-        builder
-            .header("User-Agent", NATIVE_USER_AGENT)
-            .header("X-Garmin-User-Agent", NATIVE_X_GARMIN_USER_AGENT)
-            .header("X-Garmin-Paired-App-Version", "10861")
-            .header("X-Garmin-Client-Platform", "Android")
-            .header("X-App-Ver", "10861")
-            .header("X-Lang", "en")
-            .header("X-GCExperience", "GC5")
-            .header("Accept-Language", "en-US,en;q=0.9")
-    }
 
     private fun jsonBody(vararg fields: Pair<String, Any?>): okhttp3.RequestBody {
         val json = JSONObject()
@@ -590,10 +536,6 @@ class GarminAuthClient(
         private const val LOGIN_USER_AGENT =
             "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) " +
                 "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
-        private const val NATIVE_USER_AGENT = "GCM-Android-5.23"
-        private const val NATIVE_X_GARMIN_USER_AGENT =
-            "com.garmin.android.apps.connectmobile/5.23; ; " +
-                "Google/sdk_gphone64_arm64/google; Android/33; Dalvik/2.1.0"
 
         private val DI_CLIENT_IDS = listOf(
             "GARMIN_CONNECT_MOBILE_ANDROID_DI_2025Q2",
@@ -612,23 +554,19 @@ class GarminAuthClient(
         private const val ACCESS_TOKEN_KEY = "access_token"
         private const val REFRESH_TOKEN_KEY = "refresh_token"
 
-        private const val HTTP_OK = 200
-        private const val HTTP_UNAUTHORIZED = 401
-        private const val HTTP_NOT_FOUND = 404
-        private const val HTTP_TOO_MANY_REQUESTS = 429
+        private const val HTTP_OK = GarminHttp.HTTP_OK
+        private const val HTTP_UNAUTHORIZED = GarminHttp.HTTP_UNAUTHORIZED
+        private const val HTTP_NOT_FOUND = GarminHttp.HTTP_NOT_FOUND
+        private const val HTTP_TOO_MANY_REQUESTS = GarminHttp.HTTP_TOO_MANY_REQUESTS
 
         private const val EXP_REFRESH_MARGIN_SECONDS = 900L
         private const val API_MAX_ATTEMPTS = 3
-        private const val CALL_TIMEOUT_SECONDS = 15L
 
         /**
          * Capped exponential backoff with jitter for post-auth API GET
          * retries: min(10 s, 1 s * 2^n) * (0.5 + rand(0.5)).
          */
-        fun defaultApiBackoffDelayMs(attempt: Int): Long {
-            val exponential = 1000L shl (attempt - 1).coerceIn(0, 10)
-            val capped = minOf(10_000L, exponential)
-            return (capped * (0.5 + Random.nextDouble(0.5))).toLong()
-        }
+        fun defaultApiBackoffDelayMs(attempt: Int): Long =
+            GarminHttp.defaultBackoffDelayMs(attempt)
     }
 }

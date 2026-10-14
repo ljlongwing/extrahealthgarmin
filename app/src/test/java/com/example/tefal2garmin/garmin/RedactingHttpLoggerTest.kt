@@ -62,4 +62,22 @@ class RedactingHttpLoggerTest {
             redacted.contains("client_id=GARMIN_CONNECT_MOBILE_ANDROID_DI_2025Q2"))
         assertTrue(redacted.contains("refresh_token=<redacted>"))
     }
+
+    @Test
+    fun `redacts_camel_case_service_ticket_in_login_response`() {
+        // Shape of Garmin's sso/mobile/api/login 200 response observed in the
+        // live spike: the one-time CAS ticket arrives under a camelCase key,
+        // which the snake_case-only regex missed (spike finding 2026-10-14).
+        val body = "{\"serviceURL\":\"https://mobile.integration.garmin.com/gcm/ios\"," +
+            "\"serviceTicketId\":\"ST-024846-KrxmC4Ab2u8unKKXD8WY-sso\"," +
+            "\"responseStatus\":{\"type\":\"SUCCESSFUL\"},\"authType\":\"CAS\"}"
+
+        val redacted = logger.redact(body)
+
+        assertFalse("the CAS ticket value must not survive: $redacted",
+            redacted.contains("ST-024846-KrxmC4Ab2u8unKKXD8WY-sso"))
+        assertTrue("the key must stay visible: $redacted",
+            redacted.contains("\"serviceTicketId\":"))
+        assertTrue(redacted.contains("\"authType\":\"CAS\""))
+    }
 }

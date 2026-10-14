@@ -31,3 +31,11 @@ class GarminAuthError(message: String) : Exception(message)
  * "no tokens stored" — it must never crash the app.
  */
 class TokenCryptoException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/**
+ * A record meant for upload violates the human-plausible value ranges (see
+ * [GarminWeighInRecord.validateRanges]). Thrown before any encoding or
+ * network call — the FIT uint16 field scales would silently truncate
+ * out-of-range floats, so validation must happen first.
+ */
+class GarminValidationError(message: String) : Exception(message)
