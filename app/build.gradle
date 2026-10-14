@@ -1,6 +1,5 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -37,10 +36,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    
-    kotlinOptions {
-        jvmTarget = '11'
-    }
+
+    // Kotlin is compiled by AGP 9's built-in Kotlin support; its jvmTarget
+    // defaults to compileOptions.targetCompatibility above.
 }
 
 dependencies {

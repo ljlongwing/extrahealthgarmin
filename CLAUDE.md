@@ -45,7 +45,7 @@ Two output paths exist: production builds the CSV string via `GarminCsvSchema` i
 - All UI strings via `R.string` — English in `res/values/strings.xml`, Russian in `res/values-ru/`; keep both in sync.
 - Logging: `android.util.Log` with a per-class `TAG` in the `companion object`.
 - `utils/` classes are stateless namespaces — logic lives in `companion object` functions.
-- `gradle.properties` carries Java 25 ↔ Kotlin 1.9 workarounds (Kotlin daemon disabled, jvm-target validation ignored), and the root `build.gradle` has both a `buildscript` classpath and the `plugins` DSL with different AGP versions — deliberate recovery state, don't "clean it up" without reading `docs/gradle-*.md` first.
+- The toolchain is Gradle 9.6.0 / JDK 26 with a single AGP version (9.4.1) declared only in the root `build.gradle` `plugins {}` block — no `buildscript {}` classpath. AGP 9 compiles Kotlin via its built-in Kotlin support, so `org.jetbrains.kotlin.android` is not applied anywhere and Kotlin's `jvmTarget` defaults to `compileOptions.targetCompatibility`; `gradle.properties` keeps only `android.useAndroidX`, `android.enableJetifier`, and `org.gradle.jvmargs`.
 - Changes to parsing, normalization, or the output format must come with a unit test — the suite mirrors the pipeline, one test class per util in `app/src/test/java/com/example/tefal2garmin/utils/`, plus `EndToEndIntegrationTest`. Sample fixtures (including a real Goodvibes export) live in `test_files/`.
 
 ## Tools: when to use what

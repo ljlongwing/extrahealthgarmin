@@ -70,3 +70,13 @@
 - Issue is specifically with wrapper version, not Java or core project files
 
 **Recommendation:** Upgrade to Gradle 9.1.0 with matching Kotlin plugin version for full compatibility.
+## Outcome (2026-10-14): AGP 9.4.1 under Gradle 9.6.0 / JDK 26
+
+The recommendation above is obsolete. The build now runs on the AGP 9.x line:
+
+- AGP **9.4.1** (single source of truth, root `build.gradle` `plugins {}` block; `buildscript {}` removed). AGP 8.x cannot configure under Gradle 9.6.0 (relies on `org.gradle.api.problems.internal.InternalProblems`, removed in 9.6.0).
+- No separate Kotlin plugin: AGP 9 ships **built-in Kotlin support**, so `org.jetbrains.kotlin.android` is no longer applied; Kotlin `jvmTarget` defaults to `compileOptions.targetCompatibility` (1.8 here).
+- Wrapper stays on **Gradle 9.6.0**; machine runs Temurin **JDK 26** only.
+- SDK (at `~/Library/Android/sdk`, see `local.properties`): cmdline-tools + `platforms;android-34` + `build-tools;36.0.0`, licenses accepted.
+- `gradle.properties` reduced to `android.useAndroidX`, `android.enableJetifier`, `org.gradle.jvmargs`; all Java-25-era Kotlin workarounds removed.
+- Verified: `help` / `assembleDebug` / `lintDebug` green; `testDebugUnitTest` compiles and runs 107 tests (2 pre-existing assertion failures in `GarminCsvGeneratorTest`, unrelated to the toolchain).
