@@ -57,6 +57,7 @@ Two output paths exist: production builds the CSV string via `GarminCsvSchema` i
 
 ## Process
 
+- **Task tracker: `br`** (beads, DB in `.beads/`) — all epics, tasks, issues and dependencies live there, not in markdown files. Create: `br create --type epic|task|bug`; link: `br dep add <child> <parent> --type parent-child`; check: `br epic status`, `br list --status open`, `br ready`. Keep statuses current as work progresses.
 - **USE PARALLEL AGENTS WHEREVER POSSIBLE**: launch independent tasks/investigations/reviews as a single message with multiple Agent calls. Only in parallel where there are no shared files or state.
 - Commits, code, and identifiers — in English. Commit attribution: `Co-Authored-By: Claude Code <noreply@anthropic.com>`.
 - Principles: SOLID + KISS; code style — match the surroundings.
