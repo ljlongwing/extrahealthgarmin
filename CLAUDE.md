@@ -96,6 +96,6 @@ changes token, last-sync instant, processed-record-id dedup set, cached height. 
 ## Process
 
 - **Task tracker: `br`** (beads, DB in `.beads/`) — all epics, tasks, issues and dependencies live there, not in markdown files. Create: `br create --type epic|task|bug`; link: `br dep add <child> <parent> --type parent-child`; check: `br epic status`, `br list --status open`, `br ready`. Keep statuses current as work progresses.
-- **USE PARALLEL AGENTS WHEREVER POSSIBLE**: launch independent tasks/investigations/reviews as a single message with multiple Agent calls. Only in parallel where there are no shared files or state.
+- **USE PARALLEL AGENTS WHEREVER POSSIBLE**: launch independent tasks/investigations/reviews as a single message with multiple Agent calls. Only in parallel where there are no shared files or state. EXCEPTION: when the session runs on the Kimi API (`kimi-for-coding` model), the provider gateway rate-limits subagent traffic hard (429s) — work WITHOUT subagents in that case: do investigations/reviews/implementations directly in the main session.
 - Commits, code, and identifiers — in English. Commit attribution: `Co-Authored-By: Claude Code <noreply@anthropic.com>`.
 - Principles: SOLID + KISS; code style — match the surroundings.
