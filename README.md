@@ -22,6 +22,20 @@ Open source (MIT), no ads, no tracking — just your scale data where you want i
 - **🔁 Offline retry**: failed uploads stay retriable and ride along with the next sync pass (exponential backoff on network problems)
 - **🌍 Multilingual**: full English and Russian UI
 
+## 📸 Screenshots
+
+**Main screen** — Health Connect permission status, one-tap sync and Garmin login state at a glance:
+
+<img src="docs/images/screenshot-main.png" width="320" alt="Extra Health Garmin main screen — Health Connect to Garmin Connect sync status with Sync now button">
+
+**After a sync pass** — the dedup journal in action: everything already uploaded to Garmin Connect, nothing re-sent:
+
+<img src="docs/images/screenshot-sync-result.png" width="320" alt="Extra Health Garmin after sync — all measurements already in Garmin Connect, nothing to upload (dedup journal)">
+
+**Demo** — a full manual sync pass, from tap to result:
+
+<video src="docs/images/demo-sync.mp4" width="320" autoplay loop muted playsinline></video>
+
 ## 🚀 Quick Start — install, link Garmin Connect, sync
 
 ### Installation
