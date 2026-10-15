@@ -164,9 +164,40 @@ class GarminRepositoryRecordsTest {
     // ------------------------------------------------------------------ //
 
     @Test
+    fun `uploadNewRecords_refreshedTokens_persistedToStore`() = runTest {
+        // Task 5 fix: GarminUploadClient rotates tokens (refreshIfNeeded/
+        // forceRefresh); the repository must persist the tokens the upload
+        // actually used, or the next call loads a stale refresh token and
+        // eventually forces a re-login.
+        tokenStore.save(TOKENS)
+        val rotated = GarminTokens("jwt-new", "rt-new", TOKENS.diClientId)
+        remote.uploadResult = UploadResult.Success(1, rotated)
+
+        val outcome = repository.uploadNewRecords(listOf(weighIn(E1)))
+
+        assertTrue("expected Success, was $outcome", outcome is UploadOutcome.Success)
+        assertEquals("rotated tokens must replace the stored ones", rotated, tokenStore.load())
+    }
+
+    @Test
+    fun `uploadNewRecords_partial_persistsRefreshedTokensToo`() = runTest {
+        tokenStore.save(TOKENS)
+        val rotated = GarminTokens("jwt-new", "rt-new", TOKENS.diClientId)
+        remote.uploadResult = UploadResult.Partial(
+            succeededKeys = emptyList(),
+            failureMessages = listOf("Row 1 rejected"),
+            tokens = rotated
+        )
+
+        repository.uploadNewRecords(listOf(weighIn(E1)))
+
+        assertEquals("partial uploads must also persist rotated tokens", rotated, tokenStore.load())
+    }
+
+    @Test
     fun `uploadNewRecords_success_journalsAllKeys`() = runTest {
         tokenStore.save(TOKENS)
-        remote.uploadResult = UploadResult.Success(2)
+        remote.uploadResult = UploadResult.Success(2, TOKENS)
         val records = listOf(weighIn(E1), weighIn(E2))
 
         val outcome = repository.uploadNewRecords(records)
@@ -201,7 +232,8 @@ class GarminRepositoryRecordsTest {
         val rejected2 = weighIn(E3)
         remote.uploadResult = UploadResult.Partial(
             succeededKeys = listOf(confirmed.journalKey()),
-            failureMessages = listOf("Row 2 rejected", "Row 3 rejected")
+            failureMessages = listOf("Row 2 rejected", "Row 3 rejected"),
+            tokens = TOKENS
         )
 
         val outcome = repository.uploadNewRecords(listOf(confirmed, rejected1, rejected2))
@@ -224,7 +256,7 @@ class GarminRepositoryRecordsTest {
         assertFalse(journalPersistence.stored!!.contains("\"${rejected2.journalKey()}\""))
 
         // The unconfirmed records stay retriable: a second run uploads exactly them.
-        remote.uploadResult = UploadResult.Success(2)
+        remote.uploadResult = UploadResult.Success(2, TOKENS)
         val second = repository.uploadNewRecords(listOf(confirmed, rejected1, rejected2))
 
         assertTrue("expected Success on retry, was $second", second is UploadOutcome.Success)
@@ -341,7 +373,7 @@ class GarminRepositoryRecordsTest {
     @Test
     fun `uploadNewRecords_intraBatchDedup`() = runTest {
         tokenStore.save(TOKENS)
-        remote.uploadResult = UploadResult.Success(1)
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
 
         val outcome = repository.uploadNewRecords(listOf(weighIn(E1), weighIn(E1)))
 

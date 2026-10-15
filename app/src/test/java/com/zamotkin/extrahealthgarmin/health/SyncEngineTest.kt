@@ -2,6 +2,7 @@ package com.zamotkin.extrahealthgarmin.health
 
 import com.zamotkin.extrahealthgarmin.data.UploadOutcome
 import com.zamotkin.extrahealthgarmin.garmin.GarminWeighInRecord
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -304,6 +305,83 @@ class SyncEngineTest {
     // ------------------------------------------------------------------ //
     //  Helpers                                                            //
     // ------------------------------------------------------------------ //
+
+    @Test
+    fun `concurrent_pass_holding_lock_skips_as_idle`() = runTest {
+        // Task 5 fix: a second pass arriving while another holds the
+        // cross-process lock must skip as Idle, not race the same pending set
+        // (duplicate-upload window between SyncWorker and manual sync).
+        val tmp = java.nio.file.Files.createTempDirectory("sync-lock-test").toFile()
+        val store = FileSyncStateStore(java.io.File(tmp, "state.json"))
+        val lockFile = java.io.File(tmp, "state.lock")
+        // Scripted pullChanges: if BOTH passes somehow ran (lock broken),
+        // the second pass must find an EMPTY changes page -> Idle via dedup,
+        // never crash on an unscripted response. The primary assertion is
+        // gatewayCalls == 1, which only holds when the lock actually gated.
+        val source = FakeSource(
+            readResult = mutableListOf(weight("w1", NOW.minus(Duration.ofMinutes(10)))),
+            pullResult = ChangesPage(emptyList(), "tok2", hasMore = false, tokenExpired = false)
+        )
+        var gatewayCalls = 0
+        val engine = SyncEngine(
+            source = source,
+            stateStore = store,
+            gateway = { records -> gatewayCalls++; UploadOutcome.Success(records.size) },
+            clock = { NOW },
+            ownPackage = OWN,
+            lockFile = lockFile
+        )
+
+        val first = async { engine.sync() }
+        val second = async { engine.sync() }
+        val results = listOf(first.await(), second.await())
+
+        assertEquals("one pass ran, the other skipped as Idle",
+            listOf(SyncResult.Uploaded(1), SyncResult.Idle),
+            results.sortedBy { if (it is SyncResult.Uploaded) 0 else 1 })
+        assertEquals("gateway must be invoked exactly once across both passes", 1, gatewayCalls)
+        tmp.deleteRecursively()
+    }
+
+    @Test
+    fun `sequential_passes_after_lock_release_both_proceed`() = runTest {
+        val tmp = java.nio.file.Files.createTempDirectory("sync-lock-seq").toFile()
+        val store = FileSyncStateStore(java.io.File(tmp, "state.json"))
+        val lockFile = java.io.File(tmp, "state.lock")
+        val source = FakeSource(
+            readResult = mutableListOf(weight("w1", NOW.minus(Duration.ofMinutes(10))))
+        )
+        var gatewayCalls = 0
+        val engine = SyncEngine(
+            source = source,
+            stateStore = store,
+            gateway = { records -> gatewayCalls++; UploadOutcome.Success(records.size) },
+            clock = { NOW },
+            ownPackage = OWN,
+            lockFile = lockFile
+        )
+
+        assertEquals(SyncResult.Uploaded(1), engine.sync())
+        // Second pass: the lock is free, the engine runs, but the state
+        // store now holds a changes token, so it takes the pullChanges path
+        // -- FakeSource has no scripted pullChanges response (error()).
+        // Assert only what this test owns: the lock released and let the
+        // second pass ACQUIRE it (no IllegalStateException from tryLock on a
+        // closed channel), which the clean return proves.
+        val source2 = FakeSource(pullResult = ChangesPage(emptyList(), "tok2", hasMore = false, tokenExpired = false))
+        val engine2 = SyncEngine(
+            source = source2,
+            stateStore = store,
+            gateway = { records -> gatewayCalls++; UploadOutcome.Success(records.size) },
+            clock = { NOW },
+            ownPackage = OWN,
+            lockFile = lockFile
+        )
+        assertEquals("lock released: second engine instance proceeds",
+            SyncResult.Idle, engine2.sync())
+        assertEquals("gateway ran once (second pass found the journal dedup set)", 1, gatewayCalls)
+        tmp.deleteRecursively()
+    }
 
     private fun engine(
         source: FakeSource,

@@ -69,7 +69,7 @@ class GarminUploadClientTest {
 
         val result = client.uploadWeighIns(listOf(record(EPOCH_1)), tokens())
 
-        assertEquals(UploadResult.Success(1), result)
+        assertEquals(1, (result as UploadResult.Success).count)
         val request = server.takeRequest()
         assertEquals("/upload-service/upload", request.path)
         assertEquals("POST", request.method)
@@ -157,7 +157,7 @@ class GarminUploadClientTest {
             tokens()
         )
 
-        assertEquals(UploadResult.Success(3), result)
+        assertEquals(3, (result as UploadResult.Success).count)
         assertEquals(1, server.requestCount)
     }
 
@@ -220,7 +220,7 @@ class GarminUploadClientTest {
 
         val result = client.uploadWeighIns(listOf(record(EPOCH_1)), tokens())
 
-        assertEquals(UploadResult.Success(1), result)
+        assertEquals(1, (result as UploadResult.Success).count)
         assertEquals("204 must produce exactly ONE request", 1, server.requestCount)
     }
 
@@ -243,7 +243,7 @@ class GarminUploadClientTest {
             tokens()
         )
         assertEquals("inclusive maxima (500.0 kg / 100% / BMI 100) must be accepted",
-            UploadResult.Success(1), accepted)
+            1, (accepted as UploadResult.Success).count)
         assertEquals(1, server.requestCount)
 
         try {
@@ -312,7 +312,7 @@ class GarminUploadClientTest {
     fun `empty_records_returns_success_zero_without_network`() = runBlocking {
         val result = client.uploadWeighIns(emptyList(), tokens())
 
-        assertEquals(UploadResult.Success(0), result)
+        assertEquals(0, (result as UploadResult.Success).count)
         assertEquals("empty input must produce ZERO requests", 0, server.requestCount)
     }
 
@@ -362,7 +362,7 @@ class GarminUploadClientTest {
 
         val result = client.uploadWeighIns(listOf(record(EPOCH_1)), tokens())
 
-        assertEquals(UploadResult.Success(1), result)
+        assertEquals(1, (result as UploadResult.Success).count)
         assertEquals(3, server.requestCount)
         server.takeRequest() // first upload (401, old token)
         server.takeRequest() // refresh

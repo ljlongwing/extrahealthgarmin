@@ -58,7 +58,8 @@ interface HealthSyncFacade {
 class RealHealthSyncFacade(
     private val context: Context,
     private val stateStore: SyncStateStore,
-    private val uploaderProvider: () -> GarminUploadOrchestrator
+    private val uploaderProvider: () -> GarminUploadOrchestrator,
+    private val lockFile: java.io.File? = null
 ) : HealthSyncFacade {
 
     override suspend fun status(): HcStatusSnapshot {
@@ -81,7 +82,8 @@ class RealHealthSyncFacade(
             stateStore = stateStore,
             gateway = { records -> uploader.uploadNewRecords(records) },
             clock = Instant::now,
-            ownPackage = context.packageName
+            ownPackage = context.packageName,
+            lockFile = lockFile
         ).sync()
     }
 
@@ -120,6 +122,9 @@ object HealthSyncWiring {
     /** Sync state file inside the app's filesDir. */
     const val STATE_FILE_NAME = "hc-sync-state.json"
 
+    /** Cross-process guard next to the state file (task 5 lock). */
+    const val LOCK_FILE_NAME = "hc-sync-state.lock"
+
     fun facade(context: Context, uploader: GarminUploadOrchestrator? = null): HealthSyncFacade =
         RealHealthSyncFacade(
             // The caller's Context is stored as-is (no applicationContext
@@ -127,6 +132,7 @@ object HealthSyncWiring {
             // worker passes the application context explicitly.
             context = context,
             stateStore = FileSyncStateStore(File(context.filesDir, STATE_FILE_NAME)),
-            uploaderProvider = { uploader ?: GarminRepository(context) }
+            uploaderProvider = { uploader ?: GarminRepository(context) },
+            lockFile = File(context.filesDir, LOCK_FILE_NAME)
         )
 }

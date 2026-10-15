@@ -114,20 +114,37 @@ class GarminWeighInRecordExtendedRangesTest {
     // ------------------------------------------------------------------ //
 
     private fun rec(
+        weightKg: Float = 80f,
+        percentFat: Float? = 22.5f,
+        bmi: Float? = 24.7f,
         boneMassKg: Float? = null,
         leanBodyMassKg: Float? = null,
         bodyWaterPercent: Float? = null,
         basalMetabolicRateKcal: Float? = null
     ): GarminWeighInRecord = GarminWeighInRecord(
         epochSecondsUtc = 1_760_000_000L,
-        weightKg = 80f,
-        percentFat = 22.5f,
-        bmi = 24.7f,
+        weightKg = weightKg,
+        percentFat = percentFat,
+        bmi = bmi,
         boneMassKg = boneMassKg,
         leanBodyMassKg = leanBodyMassKg,
         bodyWaterPercent = bodyWaterPercent,
         basalMetabolicRateKcal = basalMetabolicRateKcal
     )
+
+    @Test
+    fun `infinite_values_rejected_in_every_field`() {
+        // NaN-only checks let infinity reach the FIT uint16 encoder (cast
+        // saturates/wraps silently) — task 5 fix: isFinite everywhere.
+        invalid(rec(weightKg = Float.POSITIVE_INFINITY), "weight")
+        invalid(rec(percentFat = Float.POSITIVE_INFINITY), "fat")
+        invalid(rec(bmi = Float.NEGATIVE_INFINITY), "BMI")
+        invalid(rec(boneMassKg = Float.POSITIVE_INFINITY), "bone")
+        invalid(rec(leanBodyMassKg = Float.POSITIVE_INFINITY), "lean")
+        invalid(rec(bodyWaterPercent = Float.POSITIVE_INFINITY), "water")
+        invalid(rec(basalMetabolicRateKcal = Float.POSITIVE_INFINITY), "BMR")
+        valid(rec())
+    }
 
     private fun valid(record: GarminWeighInRecord) = record.validateRanges()
 

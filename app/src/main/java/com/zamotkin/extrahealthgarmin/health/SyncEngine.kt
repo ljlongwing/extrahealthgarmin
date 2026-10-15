@@ -1,7 +1,13 @@
 package com.zamotkin.extrahealthgarmin.health
 
+import android.util.Log
 import com.zamotkin.extrahealthgarmin.data.UploadOutcome
 import com.zamotkin.extrahealthgarmin.garmin.GarminWeighInRecord
+import java.io.IOException
+import java.io.RandomAccessFile
+import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
 import java.time.Duration
 import java.time.Instant
 
@@ -58,10 +64,71 @@ class SyncEngine(
     private val stateStore: SyncStateStore,
     private val gateway: suspend (List<GarminWeighInRecord>) -> UploadOutcome,
     private val clock: () -> Instant,
-    private val ownPackage: String
+    private val ownPackage: String,
+    /**
+     * Optional cross-process guard: when set, the whole pass runs under a
+     * non-blocking file lock so a concurrent pass (e.g. SyncWorker while the
+     * UI already syncs) skips as [SyncResult.Idle] instead of racing the same
+     * pending set. Same-process callers are expected to serialize before
+     * reaching here (the UI guards on hcSyncRunning) — this lock is the
+     * belt-and-braces for the worker path.
+     */
+    private val lockFile: java.io.File? = null
 ) {
 
     suspend fun sync(): SyncResult {
+        val lock = tryAcquireLock() ?: return SyncResult.Idle
+        try {
+            return syncUnderLock()
+        } finally {
+            releaseLock(lock)
+        }
+    }
+
+    private fun tryAcquireLock(): HeldLock? {
+        val file = lockFile ?: return HeldLock(null, null)
+        return try {
+            val raf = RandomAccessFile(file, "rw")
+            val channel: FileChannel = raf.channel
+            val lock: FileLock? = try {
+                channel.tryLock()
+            } catch (e: OverlappingFileLockException) {
+                null
+            }
+            if (lock == null) {
+                Log.d(TAG, "Sync lock held by another pass - skipping as Idle")
+                channel.close()
+                null
+            } else {
+                HeldLock(raf, lock)
+            }
+        } catch (e: IOException) {
+            // Locking is best-effort: fail-open (a missed lock only widens the
+            // existing small race; a fail-closed engine would stop syncing).
+            Log.w(TAG, "Sync lock unavailable, proceeding unlocked", e)
+            HeldLock(null, null)
+        }
+    }
+
+    private fun releaseLock(held: HeldLock) {
+        try {
+            held.lock?.release()
+        } catch (e: IOException) {
+            Log.w(TAG, "Failed to release sync lock", e)
+        }
+        try {
+            held.channelRaf?.close()
+        } catch (e: IOException) {
+            Log.w(TAG, "Failed to close sync lock channel", e)
+        }
+    }
+
+    private data class HeldLock(
+        val channelRaf: RandomAccessFile?,
+        val lock: FileLock?
+    )
+
+    private suspend fun syncUnderLock(): SyncResult {
         val state = stateStore.load()
         val now = clock()
 
@@ -173,6 +240,8 @@ class SyncEngine(
     }
 
     companion object {
+        private const val TAG = "SyncEngine"
+
         /** First-run (and fallback-with-no-timestamp) read window. */
         val INITIAL_SYNC_WINDOW: Duration = Duration.ofDays(30)
     }

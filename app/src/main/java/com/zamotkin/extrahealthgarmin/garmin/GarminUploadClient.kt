@@ -15,8 +15,10 @@ import org.json.JSONObject
 /** Outcome of a batched weigh-in upload. */
 sealed class UploadResult {
 
-    /** Every record was accepted; [count] rows were uploaded. */
-    data class Success(val count: Int) : UploadResult()
+    /** Every record was accepted; [count] rows were uploaded. [tokens] are the
+     * (possibly refreshed) credentials the request actually used — the caller
+     * MUST persist them, or a rotated refresh token is lost (task 5 fix). */
+    data class Success(val count: Int, val tokens: GarminTokens) : UploadResult()
 
     /**
      * Garmin reported per-record failures via `detailedImportResult.failures`.
@@ -29,7 +31,8 @@ sealed class UploadResult {
      */
     data class Partial(
         val succeededKeys: List<String>,
-        val failureMessages: List<String>
+        val failureMessages: List<String>,
+        val tokens: GarminTokens
     ) : UploadResult()
 }
 
@@ -75,7 +78,7 @@ class GarminUploadClient(
     ): UploadResult = withContext(Dispatchers.IO) {
         if (records.isEmpty()) {
             Log.d(TAG, "Upload: no new records - skipping network entirely")
-            return@withContext UploadResult.Success(0)
+            return@withContext UploadResult.Success(0, tokens)
         }
         GarminWeighInRecord.validateRanges(records)
         var current = authClient.refreshIfNeeded(tokens)
@@ -95,7 +98,7 @@ class GarminUploadClient(
             }
             when {
                 call.code == GarminHttp.HTTP_NO_CONTENT ->
-                    return@withContext UploadResult.Success(records.size)
+                    return@withContext UploadResult.Success(records.size, current)
                 call.code == GarminHttp.HTTP_UNAUTHORIZED && !refreshedAfter401 -> {
                     Log.d(TAG, "Upload: HTTP 401 - refreshing DI token once and retrying")
                     current = authClient.forceRefresh(current)
@@ -110,7 +113,7 @@ class GarminUploadClient(
                 call.code == GarminHttp.HTTP_NOT_FOUND ->
                     throw GarminNotFoundError("Upload endpoint returned HTTP 404")
                 call.code >= 500 && attempt < MAX_ATTEMPTS -> backoffAndWait(attempt)
-                else -> return@withContext parseUploadOutcome(call, records)
+                else -> return@withContext parseUploadOutcome(call, records, current)
             }
         }
         throw IllegalStateException("upload retry loop must never exit normally")
@@ -130,15 +133,16 @@ class GarminUploadClient(
      */
     private fun parseUploadOutcome(
         call: GarminHttp.HttpCallResult,
-        records: List<GarminWeighInRecord>
+        records: List<GarminWeighInRecord>,
+        tokens: GarminTokens
     ): UploadResult {
         val json = GarminHttp.parseJsonBody("Upload", call)
         val failures = json.optJSONObject(DETAILED_IMPORT_RESULT_KEY)
             ?.optJSONArray(FAILURES_KEY)
         return if (failures != null && failures.length() > 0) {
-            buildPartial(failures, records)
+            buildPartial(failures, records, tokens)
         } else if (call.code in 200..299) {
-            UploadResult.Success(records.size)
+            UploadResult.Success(records.size, tokens)
         } else {
             val detail = json.optString(MESSAGE_KEY)
                 .ifBlank { json.optString(CONTENT_KEY) }
@@ -164,7 +168,8 @@ class GarminUploadClient(
      */
     private fun buildPartial(
         failures: JSONArray,
-        records: List<GarminWeighInRecord>
+        records: List<GarminWeighInRecord>,
+        tokens: GarminTokens
     ): UploadResult.Partial {
         val messages = mutableListOf<String>()
         val failedIndices = mutableSetOf<Int>()
@@ -202,7 +207,7 @@ class GarminUploadClient(
             "Upload partial: ${failedIndices.size} failed, " +
                 "${succeededKeys.size} confirmed, correlatable=$allCorrelatable"
         )
-        return UploadResult.Partial(succeededKeys, messages)
+        return UploadResult.Partial(succeededKeys, messages, tokens)
     }
 
     // ------------------------------------------------------------------ //

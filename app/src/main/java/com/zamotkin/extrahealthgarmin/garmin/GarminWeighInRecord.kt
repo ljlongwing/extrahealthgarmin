@@ -36,48 +36,48 @@ data class GarminWeighInRecord(
      * (NaN/infinity) are rejected too.
      */
     fun validateRanges() {
-        if (weightKg.isNaN() || weightKg <= 0f || weightKg > MAX_WEIGHT_KG) {
+        if (!weightKg.isFinite() || weightKg <= 0f || weightKg > MAX_WEIGHT_KG) {
             throw GarminValidationError(
                 "Weight ${weightKg} kg outside plausible range (0, $MAX_WEIGHT_KG]"
             )
         }
         percentFat?.let { fat ->
-            if (fat.isNaN() || fat < 0f || fat > MAX_PERCENT_FAT) {
+            if (!fat.isFinite() || fat < 0f || fat > MAX_PERCENT_FAT) {
                 throw GarminValidationError(
                     "Percent fat $fat % outside plausible range [0, $MAX_PERCENT_FAT]"
                 )
             }
         }
         bmi?.let { value ->
-            if (value.isNaN() || value <= 0f || value > MAX_BMI) {
+            if (!value.isFinite() || value <= 0f || value > MAX_BMI) {
                 throw GarminValidationError(
                     "BMI $value outside plausible range (0, $MAX_BMI]"
                 )
             }
         }
         boneMassKg?.let { bone ->
-            if (bone.isNaN() || bone < 0f || bone > MAX_BONE_MASS_KG) {
+            if (!bone.isFinite() || bone < 0f || bone > MAX_BONE_MASS_KG) {
                 throw GarminValidationError(
                     "Bone mass $bone kg outside plausible range [0, $MAX_BONE_MASS_KG]"
                 )
             }
         }
         leanBodyMassKg?.let { lean ->
-            if (lean.isNaN() || lean < 0f || lean > MAX_LEAN_BODY_MASS_KG) {
+            if (!lean.isFinite() || lean < 0f || lean > MAX_LEAN_BODY_MASS_KG) {
                 throw GarminValidationError(
                     "Lean body mass $lean kg outside plausible range [0, $MAX_LEAN_BODY_MASS_KG]"
                 )
             }
         }
         bodyWaterPercent?.let { water ->
-            if (water.isNaN() || water < 0f || water > MAX_BODY_WATER_PERCENT) {
+            if (!water.isFinite() || water < 0f || water > MAX_BODY_WATER_PERCENT) {
                 throw GarminValidationError(
                     "Body water percent $water % outside plausible range [0, $MAX_BODY_WATER_PERCENT]"
                 )
             }
         }
         basalMetabolicRateKcal?.let { bmr ->
-            if (bmr.isNaN() || bmr < MIN_BMR_KCAL || bmr > MAX_BMR_KCAL) {
+            if (!bmr.isFinite() || bmr < MIN_BMR_KCAL || bmr > MAX_BMR_KCAL) {
                 throw GarminValidationError(
                     "BMR $bmr kcal/day outside plausible range [$MIN_BMR_KCAL, $MAX_BMR_KCAL]"
                 )

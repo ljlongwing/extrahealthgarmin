@@ -219,6 +219,10 @@ class GarminRepository internal constructor(
                 when (val result = remote.uploadWeighIns(newRecords, tokens)) {
                     is UploadResult.Success -> {
                         journal.markSent(newRecords.map { it.journalKey() })
+                        // Persist the (possibly rotated) tokens the upload actually
+                        // used — dropping them forces a re-login once the old
+                        // refresh token expires (task 5 fix).
+                        tokenStore.save(result.tokens)
                         Log.d(TAG, "Upload: ${newRecords.size} records confirmed by Garmin")
                         UploadOutcome.Success(newRecords.size)
                     }
@@ -226,6 +230,7 @@ class GarminRepository internal constructor(
                         // Journal ONLY the provably imported keys; everything
                         // else stays retriable.
                         journal.markSent(result.succeededKeys)
+                        tokenStore.save(result.tokens)
                         val succeeded = result.succeededKeys.toHashSet()
                         UploadOutcome.Partial(
                             uploadedCount = newRecords.count { it.journalKey() in succeeded },

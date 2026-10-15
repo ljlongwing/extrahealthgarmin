@@ -41,7 +41,7 @@ class GarminRepositoryTest {
         var loginException: Exception? = null
         var resumeTokens: GarminTokens = TOKENS
         var resumeException: Exception? = null
-        var uploadResult: UploadResult = UploadResult.Success(0)
+        var uploadResult: UploadResult = UploadResult.Success(0, TOKENS)
         var uploadException: Exception? = null
 
         var loginCalls = 0
@@ -151,7 +151,7 @@ class GarminRepositoryTest {
             tokens: GarminTokens
         ): UploadResult {
             uploadCalls++
-            return UploadResult.Success(records.size)
+            return UploadResult.Success(records.size, TOKENS)
         }
 
         override fun logout() {
