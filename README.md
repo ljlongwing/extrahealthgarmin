@@ -4,7 +4,7 @@
 [![Downloads](https://img.shields.io/github/downloads/zamotkin/extrahealthgarmin/total)](https://github.com/zamotkin/extrahealthgarmin/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
-[![SDK](https://img.shields.io/badge/minSdk-26%20%C2%B7%20targetSdk-34-informational.svg)](app/build.gradle)
+[![SDK](https://img.shields.io/badge/minSdk%2026%20%C2%B7%20targetSdk%2034-blue.svg)](app/build.gradle)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org)
 
 **Extra Health Garmin** syncs body-composition weigh-ins from **Health Connect** into **Garmin Connect** — automatically, in the background, with no account data ever stored beyond encrypted session tokens. Each weigh-in is encoded as a standard FIT weight-scale file with the official Garmin FIT SDK and uploaded straight to your Garmin Connect account: no manual CSV export, no middleman server, no analytics.
@@ -32,9 +32,9 @@ Open source (MIT), no ads, no tracking — just your scale data where you want i
 
 <img src="docs/images/screenshot-sync-result.png" width="320" alt="Extra Health Garmin after sync — all measurements already in Garmin Connect, nothing to upload (dedup journal)">
 
-**Demo** — a full manual sync pass, from tap to result:
+**Demo** — a full manual sync pass, from tap to result (opens the video in the browser player):
 
-<video src="docs/images/demo-sync.mp4" width="320" autoplay loop muted playsinline></video>
+[![Demo: one manual sync pass from tap to result](docs/images/screenshot-main.png)](docs/images/demo-sync.mp4)
 
 ## 🚀 Quick Start — install, link Garmin Connect, sync
 
