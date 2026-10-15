@@ -1,9 +1,12 @@
 #!/bin/bash
 
-# Tefal2Garmin Debug Setup Script
-# Настраивает отладку в эмуляторе Android
+# Extra Health Garmin Debug Setup Script
+# Builds, installs and launches the debug APK on a connected device/emulator.
 
-echo "=== Tefal2Garmin Debug Setup ==="
+APP_ID="com.zamotkin.extrahealthgarmin"
+APK="app/build/outputs/apk/debug/app-debug.apk"
+
+echo "=== Extra Health Garmin Debug Setup ==="
 echo
 
 # Colors
@@ -35,15 +38,14 @@ if [ ! -f "app/build.gradle" ]; then
     exit 1
 fi
 
-# Check if debug APK exists
-if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-    print_warning "Debug APK not found. Building..."
-    ./gradlew assembleDebug --quiet
-    if [ $? -ne 0 ]; then
-        print_error "Failed to build debug APK"
-        exit 1
-    fi
+# Build debug APK (always fresh, so the installed build matches the sources)
+echo
+print_info "Building debug APK..."
+if ./gradlew assembleDebug --quiet; then
     print_status "Debug APK built successfully"
+else
+    print_error "Failed to build debug APK"
+    exit 1
 fi
 
 # Check if ADB is available
@@ -53,7 +55,7 @@ if ! command -v adb &> /dev/null; then
 fi
 
 # Check for connected devices/emulators
-DEVICES=$(adb devices | grep -v "List" | grep -v "^$" | wc -l)
+DEVICES=$(adb devices | grep -v "List" | grep -v "^$" | wc -l | tr -d ' ')
 if [ "$DEVICES" -eq 0 ]; then
     print_error "No Android devices/emulators found."
     echo
@@ -70,41 +72,26 @@ print_status "Found $DEVICES device(s)/emulator(s)"
 # Install debug APK
 echo
 print_info "Installing debug APK..."
-if adb install -r app/build/outputs/apk/debug/app-debug.apk; then
+if adb install -r "$APK"; then
     print_status "Debug APK installed successfully"
 else
     print_error "Failed to install debug APK"
     exit 1
 fi
 
-# Push test file
+# Launch the app
 echo
-print_info "Copying test file to device..."
-if adb push test_files/Goodvibes-Dmitry-20251026231908-data.csv /sdcard/Download/; then
-    print_status "Test file copied to Downloads"
+print_info "Launching Extra Health Garmin..."
+if adb shell am start -n "${APP_ID}/${APP_ID}.MainActivity" > /dev/null 2>&1; then
+    print_status "App launched"
 else
-    print_warning "Failed to copy test file (may already exist)"
+    print_warning "Could not launch the app automatically — start it from the launcher"
 fi
-
-# Trigger media scanner
-echo
-print_info "Updating media scanner..."
-adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Download/Goodvibes-Dmitry-20251026231908-data.csv > /dev/null 2>&1
 
 echo
 print_status "Debug setup completed!"
 echo
-print_info "Next steps:"
-echo "1. Open Android Studio"
-echo "2. Open this project: File → Open → tefal2garmin"
-echo "3. Set breakpoint in MainActivity.kt line 197"
-echo "4. Run → Debug 'app'"
-echo "5. Select your emulator/device"
-echo "6. Test file sharing from Downloads folder"
-echo
 print_info "Useful commands:"
-echo "• View logs: adb logcat | grep -i tefal2garmin"
-echo "• Reinstall: adb install -r app/build/outputs/apk/debug/app-debug.apk"
-echo "• Clear data: adb shell pm clear com.example.tefal2garmin"
-echo
-print_info "See DEBUGGING_GUIDE.md for detailed instructions"
+echo "• View logs: adb logcat -s MainActivity MainViewModel SyncWorker"
+echo "• Reinstall: adb install -r $APK"
+echo "• Clear data: adb shell pm clear $APP_ID"

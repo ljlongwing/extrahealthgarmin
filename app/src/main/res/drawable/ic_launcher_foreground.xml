@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Extra Health Garmin glyph inside the 66x66 adaptive safe zone:
+         heart outline (brand blue) crossed by an ECG pulse line whose arrow
+         head breaks out through the right side of the heart (teal). Two-tone
+         strokes approximate the blue-to-teal brand gradient. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#3D7BFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 54,47 C 51.5,42 45,40.5 41,42.5 C 36,45 34,50.5 36.8,55.5 C 39.3,59.8 47,64.5 54,70 C 61,64.5 68.7,59.8 71.2,55.5 C 74,50.5 72,45 67,42.5 C 63,40.5 56.5,42 54,47 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2AD4C4"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 28,54 L 38,54 L 42.5,47.5 L 48,60.5 L 52.5,54 L 78,54" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2AD4C4"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 71,47.5 L 79,54 L 71,60.5" />
+</vector>

@@ -1,0 +1,269 @@
+package com.zamotkin.extrahealthgarmin.data
+
+import android.content.Context
+import android.util.Log
+import com.zamotkin.extrahealthgarmin.garmin.GarminAuthClient
+import com.zamotkin.extrahealthgarmin.garmin.GarminAuthError
+import com.zamotkin.extrahealthgarmin.garmin.GarminConnectionError
+import com.zamotkin.extrahealthgarmin.garmin.GarminTooManyRequestsError
+import com.zamotkin.extrahealthgarmin.garmin.GarminTokenStore
+import com.zamotkin.extrahealthgarmin.garmin.GarminTokens
+import com.zamotkin.extrahealthgarmin.garmin.GarminUploadClient
+import com.zamotkin.extrahealthgarmin.garmin.GarminValidationError
+import com.zamotkin.extrahealthgarmin.garmin.GarminWeighInRecord
+import com.zamotkin.extrahealthgarmin.garmin.KeystoreAesCrypto
+import com.zamotkin.extrahealthgarmin.garmin.LoginResult
+import com.zamotkin.extrahealthgarmin.garmin.MfaClientState
+import com.zamotkin.extrahealthgarmin.garmin.SharedPreferencesTokenPersistence
+import com.zamotkin.extrahealthgarmin.garmin.UploadJournal
+import com.zamotkin.extrahealthgarmin.garmin.UploadResult
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/**
+ * Status of a Garmin login attempt, for the UI layer. [Failed.reason] is a
+ * human-readable message (English; the UI decides on presentation).
+ */
+sealed class LoginStatus {
+    object Success : LoginStatus()
+    object NeedsMfa : LoginStatus()
+    data class Failed(val reason: String) : LoginStatus()
+}
+
+/**
+ * The UI-facing contract for the Garmin API import feature. Implementations
+ * never throw: every failure maps onto [LoginStatus.Failed] or an
+ * [UploadOutcome] variant.
+ */
+interface GarminUploadOrchestrator {
+    suspend fun login(email: String, password: String, mfaCode: String? = null): LoginStatus
+
+    /**
+     * Records-based upload: deduplicates [records] against the journal,
+     * uploads the new ones as one batch and reports an [UploadOutcome]. No
+     * residual file is produced — unconfirmed records simply stay
+     * un-journaled and are retried by the next call. Never throws.
+     */
+    suspend fun uploadNewRecords(records: List<GarminWeighInRecord>): UploadOutcome
+
+    fun hasStoredToken(): Boolean
+}
+
+/**
+ * Network seam over the task-1/2 clients so [GarminRepository] can be tested
+ * with plain fakes (the real clients are final classes doing live HTTP).
+ */
+internal interface GarminRemote {
+    suspend fun login(email: String, password: String): LoginResult
+
+    suspend fun resumeLogin(clientState: MfaClientState, code: String): GarminTokens
+
+    suspend fun uploadWeighIns(
+        records: List<GarminWeighInRecord>,
+        tokens: GarminTokens
+    ): UploadResult
+
+    /**
+     * Discards any pending MFA flow on the underlying auth client, exactly
+     * like [com.zamotkin.extrahealthgarmin.garmin.GarminAuthClient.logout]. Needed
+     * before a fresh [login] can restart an MFA flow (the "resend code" path).
+     */
+    fun logout()
+}
+
+/** Production [GarminRemote]: the real HTTP clients over one shared auth session. */
+internal class HttpGarminRemote(
+    private val authClient: GarminAuthClient,
+    private val uploadClient: GarminUploadClient
+) : GarminRemote {
+
+    override suspend fun login(email: String, password: String): LoginResult =
+        authClient.login(email, password)
+
+    override suspend fun resumeLogin(clientState: MfaClientState, code: String): GarminTokens =
+        authClient.resumeLogin(clientState, code)
+
+    override suspend fun uploadWeighIns(
+        records: List<GarminWeighInRecord>,
+        tokens: GarminTokens
+    ): UploadResult = uploadClient.uploadWeighIns(records, tokens)
+
+    override fun logout() = authClient.logout()
+}
+
+/**
+ * Data-layer orchestration behind [GarminUploadOrchestrator]: deduplicates
+ * weigh-in records against the local [UploadJournal], drives
+ * login/MFA-resume/upload through the task-1/2 clients, and reports every
+ * failure as a typed outcome.
+ *
+ * Never throws across the interface: exceptions become [LoginStatus.Failed]
+ * or [UploadOutcome] variants. Retry/backoff is owned by the clients — this
+ * class makes at most one upload attempt per call.
+ */
+class GarminRepository internal constructor(
+    private val remote: GarminRemote,
+    private val tokenStore: GarminTokenStore,
+    private val journal: UploadJournal
+) : GarminUploadOrchestrator {
+
+    constructor(context: Context) : this(
+        remote = defaultRemote(),
+        tokenStore = GarminTokenStore(
+            SharedPreferencesTokenPersistence(context),
+            KeystoreAesCrypto()
+        ),
+        journal = UploadJournal.inFilesDir(context.filesDir)
+    )
+
+    /**
+     * Client state of the MFA flow returned by the last [login] that answered
+     * NeedsMfa, or null. Remembered here because the real client keeps the
+     * flow alive in its own `pendingMfa` (a second `login` throws) — the
+     * resume must reuse THIS state, and a resend must `logout()` first.
+     */
+    @Volatile
+    private var pendingMfaClientState: MfaClientState? = null
+
+    // ------------------------------------------------------------------ //
+    //  GarminUploadOrchestrator                                           //
+    // ------------------------------------------------------------------ //
+
+    override fun hasStoredToken(): Boolean = tokenStore.load() != null
+
+    override suspend fun login(email: String, password: String, mfaCode: String?): LoginStatus =
+        withContext(Dispatchers.IO) {
+            try {
+                val pending = pendingMfaClientState
+                when {
+                    // Code entry after MFA_REQUIRED: resume the STORED flow —
+                    // calling login() again is deadlocked by the auth client's
+                    // pendingMfa gate ("MFA login already in progress").
+                    mfaCode != null && pending != null -> {
+                        val tokens = remote.resumeLogin(pending, mfaCode)
+                        pendingMfaClientState = null
+                        tokenStore.save(tokens)
+                        LoginStatus.Success
+                    }
+                    // Resend code with a pending flow: the client gate must be
+                    // cleared first, then a fresh login restarts the MFA flow.
+                    pending != null -> {
+                        remote.logout()
+                        pendingMfaClientState = null
+                        freshLogin(email, password, mfaCode)
+                    }
+                    else -> freshLogin(email, password, mfaCode)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Login failed: ${reasonOf(e)}")
+                LoginStatus.Failed(reasonOf(e))
+            }
+        }
+
+    /**
+     * Plain login attempt (no pending MFA flow). A NeedsMfa answer stores the
+     * client state so a later code entry can resume this exact flow; a failed
+     * resume keeps it, so the user may retry with a corrected code.
+     */
+    private suspend fun freshLogin(email: String, password: String, mfaCode: String?): LoginStatus {
+        return when (val result = remote.login(email, password)) {
+            is LoginResult.NeedsMfa -> {
+                pendingMfaClientState = result.clientState
+                if (mfaCode == null) {
+                    LoginStatus.NeedsMfa
+                } else {
+                    // A code was supplied together with the credentials: resume
+                    // the flow this very login just started.
+                    val tokens = remote.resumeLogin(result.clientState, mfaCode)
+                    pendingMfaClientState = null
+                    tokenStore.save(tokens)
+                    LoginStatus.Success
+                }
+            }
+            is LoginResult.Success -> {
+                pendingMfaClientState = null
+                tokenStore.save(result.tokens)
+                LoginStatus.Success
+            }
+        }
+    }
+
+    override suspend fun uploadNewRecords(records: List<GarminWeighInRecord>): UploadOutcome =
+        withContext(Dispatchers.IO) {
+            val newRecords = journal.filterNew(records)
+            if (newRecords.isEmpty()) {
+                Log.d(TAG, "Upload: journal covers every record - skipping network")
+                return@withContext UploadOutcome.NotNeeded
+            }
+
+            val tokens = tokenStore.load()
+            if (tokens == null) {
+                Log.d(TAG, "Upload: no stored DI tokens - login required")
+                return@withContext UploadOutcome.LoginRequired
+            }
+
+            // Range validation BEFORE any network call: the FIT uint16 field
+            // scales would silently truncate out-of-range floats.
+            try {
+                GarminWeighInRecord.validateRanges(newRecords)
+            } catch (e: GarminValidationError) {
+                return@withContext UploadOutcome.Retryable(
+                    e.message ?: "Value outside plausible range"
+                )
+            }
+
+            try {
+                when (val result = remote.uploadWeighIns(newRecords, tokens)) {
+                    is UploadResult.Success -> {
+                        journal.markSent(newRecords.map { it.journalKey() })
+                        Log.d(TAG, "Upload: ${newRecords.size} records confirmed by Garmin")
+                        UploadOutcome.Success(newRecords.size)
+                    }
+                    is UploadResult.Partial -> {
+                        // Journal ONLY the provably imported keys; everything
+                        // else stays retriable.
+                        journal.markSent(result.succeededKeys)
+                        val succeeded = result.succeededKeys.toHashSet()
+                        UploadOutcome.Partial(
+                            uploadedCount = newRecords.count { it.journalKey() in succeeded },
+                            failureMessages = result.failureMessages
+                        )
+                    }
+                }
+            } catch (e: GarminAuthError) {
+                Log.w(TAG, "Upload: auth rejected (${reasonOf(e)}) - clearing stored tokens")
+                tokenStore.clear()
+                UploadOutcome.LoginRequired
+            } catch (e: GarminTooManyRequestsError) {
+                UploadOutcome.Retryable(reasonOf(e))
+            } catch (e: GarminConnectionError) {
+                UploadOutcome.Retryable(reasonOf(e))
+            } catch (e: GarminValidationError) {
+                // Defensive: the client re-validates before encoding; nothing was sent.
+                UploadOutcome.Retryable(reasonOf(e))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Unreachable by construction — kept so the interface can
+                // never throw.
+                Log.w(TAG, "Upload failed unexpectedly", e)
+                UploadOutcome.Retryable("Unexpected error: ${reasonOf(e)}")
+            }
+        }
+
+    companion object {
+        private const val TAG = "GarminRepository"
+
+        /** One auth client shared by login and upload (the upload 401-refresh uses its session state). */
+        private fun defaultRemote(): GarminRemote {
+            val authClient = GarminAuthClient()
+            return HttpGarminRemote(authClient, GarminUploadClient(authClient))
+        }
+    }
+}
+
+private fun reasonOf(e: Exception): String =
+    e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName

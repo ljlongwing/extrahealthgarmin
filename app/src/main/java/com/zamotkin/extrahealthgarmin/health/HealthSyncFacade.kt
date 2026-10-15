@@ -1,0 +1,132 @@
+package com.zamotkin.extrahealthgarmin.health
+
+import android.content.Context
+import android.util.Log
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.HealthConnectFeatures
+import com.zamotkin.extrahealthgarmin.data.GarminRepository
+import com.zamotkin.extrahealthgarmin.data.GarminUploadOrchestrator
+import java.io.File
+import java.time.Instant
+
+/** Availability + permission snapshot the home screen renders. */
+data class HcStatusSnapshot(
+    val sdkStatus: HcSdkStatus,
+    val permissionsGranted: Boolean
+)
+
+/**
+ * UI-facing seam over the health/ core (task 2b): one call per thing
+ * [com.zamotkin.extrahealthgarmin.ui.MainViewModel] needs — the
+ * availability/permission snapshot, one sync pass, the persisted last-sync
+ * timestamp and the permission set to request. The interface keeps the
+ * ViewModel JVM-testable with a fake; the production implementation is
+ * [RealHealthSyncFacade].
+ *
+ * Note on the permission request: connect-client 1.1.0 offers no
+ * Intent-based request builder — the permission screen is launched through
+ * `PermissionController.createRequestPermissionResultContract()` registered
+ * by MainActivity with the Activity Result API, which is why the contract
+ * lives outside this seam.
+ */
+interface HealthSyncFacade {
+
+    /** Current provider availability + whether the foreground reads are granted. */
+    suspend fun status(): HcStatusSnapshot
+
+    /** Runs one [SyncEngine] pass with the Garmin repository as the gateway. */
+    suspend fun sync(): SyncResult
+
+    /** Persisted "when sync state last advanced" ([SyncState.lastSyncInstantEpochMs]). */
+    fun lastSyncEpochMs(): Long?
+
+    /** Permissions for the Health Connect permission screen (see [HealthPermissions]). */
+    fun permissionsToRequest(): Set<String>
+}
+
+/**
+ * Production [HealthSyncFacade]: wires [HealthConnectSource] + [SyncEngine]
+ * over one shared sync-state file, with a lazily provided
+ * [GarminUploadOrchestrator] as the upload gateway. All members are
+ * main-safe: connect-client calls are suspend and the repository hops to
+ * Dispatchers.IO itself.
+ *
+ * When Health Connect is unavailable, [status] reports the raw
+ * [HcSdkStatus] with `permissionsGranted = false` and [sync] degrades to
+ * [SyncResult.Idle] — callers gate on [status] before syncing anyway.
+ */
+class RealHealthSyncFacade(
+    private val context: Context,
+    private val stateStore: SyncStateStore,
+    private val uploaderProvider: () -> GarminUploadOrchestrator
+) : HealthSyncFacade {
+
+    override suspend fun status(): HcStatusSnapshot {
+        val source = HealthConnectSource.create(context)
+            ?: return HcStatusSnapshot(
+                sdkStatus = HealthPermissions.sdkStatus(context),
+                permissionsGranted = false
+            )
+        return HcStatusSnapshot(
+            sdkStatus = HcSdkStatus.Available,
+            permissionsGranted = source.hasReadPermissions()
+        )
+    }
+
+    override suspend fun sync(): SyncResult {
+        val source = HealthConnectSource.create(context) ?: return SyncResult.Idle
+        val uploader = uploaderProvider()
+        return SyncEngine(
+            source = source,
+            stateStore = stateStore,
+            gateway = { records -> uploader.uploadNewRecords(records) },
+            clock = Instant::now,
+            ownPackage = context.packageName
+        ).sync()
+    }
+
+    override fun lastSyncEpochMs(): Long? =
+        stateStore.load().lastSyncInstantEpochMs
+
+    override fun permissionsToRequest(): Set<String> {
+        val backgroundReadAvailable = try {
+            HealthConnectClient.getOrCreate(context).features
+                .getFeatureStatus(HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND) ==
+                HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+        } catch (e: Exception) {
+            // Provider vanished between the availability check and this tap,
+            // or the feature probe failed — request the foreground set only.
+            Log.w(TAG, "Background-read feature probe failed; requesting foreground reads only", e)
+            false
+        }
+        return HealthPermissions.permissionsToRequest(backgroundReadAvailable)
+    }
+
+    private companion object {
+        const val TAG = "RealHealthSyncFacade"
+    }
+}
+
+/**
+ * One wiring point for everything that needs the real facade
+ * (MainViewModelFactory, SyncWorker) so the sync-state file name can never
+ * drift between them. The uploader is provided lazily because this is also
+ * the MainViewModel constructor default — constructing [GarminRepository]
+ * eagerly would pull the AndroidKeyStore-backed token store into JVM unit
+ * tests that never sync.
+ */
+object HealthSyncWiring {
+
+    /** Sync state file inside the app's filesDir. */
+    const val STATE_FILE_NAME = "hc-sync-state.json"
+
+    fun facade(context: Context, uploader: GarminUploadOrchestrator? = null): HealthSyncFacade =
+        RealHealthSyncFacade(
+            // The caller's Context is stored as-is (no applicationContext
+            // hop): the ViewModel default passes the Application, and the
+            // worker passes the application context explicitly.
+            context = context,
+            stateStore = FileSyncStateStore(File(context.filesDir, STATE_FILE_NAME)),
+            uploaderProvider = { uploader ?: GarminRepository(context) }
+        )
+}

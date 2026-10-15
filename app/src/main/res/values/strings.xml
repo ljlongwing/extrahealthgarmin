@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Tefal2Garmin Sync</string>
+    <string name="app_name">Extra Health Garmin</string>
 
     <!-- Generic -->
     <string name="label_try_again">Try Again</string>

@@ -1,0 +1,179 @@
+package com.zamotkin.extrahealthgarmin.health
+
+import com.zamotkin.extrahealthgarmin.data.UploadOutcome
+import com.zamotkin.extrahealthgarmin.garmin.GarminWeighInRecord
+import java.time.Duration
+import java.time.Instant
+
+/** Terminal outcome of one [SyncEngine.sync] pass. */
+sealed class SyncResult {
+    /** Nothing new to upload (token/height state may still have advanced). */
+    object Idle : SyncResult()
+
+    /** All new measurements were imported into Garmin Connect. */
+    data class Uploaded(val uploadedCount: Int) : SyncResult()
+
+    /**
+     * Some measurements were imported; [failureMessages] describes the rest.
+     * Everything is marked processed — the failures are non-retriable on the
+     * Garmin side (e.g. duplicates the server already knows).
+     */
+    data class PartialUploaded(
+        val uploadedCount: Int,
+        val failureMessages: List<String>
+    ) : SyncResult()
+
+    /** Nothing persisted; run the whole pass again later. */
+    object Retryable : SyncResult()
+
+    /** Garmin login needed first; nothing persisted. */
+    object LoginRequired : SyncResult()
+}
+
+/**
+ * Orchestrates one Health Connect -> Garmin sync pass (Strangler phase 2a).
+ *
+ * Flow per [sync]:
+ *  1. Fetch — first run (no stored token) reads the last
+ *     [INITIAL_SYNC_WINDOW] days; later runs pull changes by token. An
+ *     expired token falls back to a range re-read since
+ *     [SyncState.lastSyncInstantEpochMs] (or the initial window when that is
+ *     unknown) — dedup then relies on [SyncState.processedRecordIds].
+ *  2. Cache — the newest height record seen becomes the BMI height.
+ *  3. Aggregate — [BodyMeasurementAggregator] correlates companions into
+ *     [WeighInMeasurement]s; young lone anchors are deferred, not uploaded.
+ *  4. Dedup — anchors already in [SyncState.processedRecordIds] drop out.
+ *  5. Upload — the gateway ([UploadOutcome]) decides the outcome.
+ *  6. Persist — ONLY terminal-success outcomes ([UploadOutcome.Success],
+ *     [Partial], [NotNeeded]) or an empty batch advance the token, timestamp
+ *     and processed set. [Retryable] and [LoginRequired] leave the stored
+ *     state untouched so the same data is retried.
+ *
+ * When anchors were deferred, [SyncState.lastSyncInstantEpochMs] stays put:
+ * changes tokens are one-shot, so the deferred (now matured) anchors can only
+ * come back through a later expired-token fallback re-read of that window.
+ */
+class SyncEngine(
+    private val source: HealthDataSource,
+    private val stateStore: SyncStateStore,
+    private val gateway: suspend (List<GarminWeighInRecord>) -> UploadOutcome,
+    private val clock: () -> Instant,
+    private val ownPackage: String
+) {
+
+    suspend fun sync(): SyncResult {
+        val state = stateStore.load()
+        val now = clock()
+
+        val fetched: List<WeighInRawRecord>
+        val nextToken: suspend () -> String
+        when (val token = state.changesToken) {
+            null -> {
+                fetched = source.readRecords(now.minus(INITIAL_SYNC_WINDOW), now)
+                nextToken = { source.newToken() }
+            }
+            else -> {
+                val page = source.pullChanges(token)
+                if (page.tokenExpired) {
+                    val since = state.lastSyncInstantEpochMs
+                        ?.let(Instant::ofEpochMilli)
+                        ?: now.minus(INITIAL_SYNC_WINDOW)
+                    fetched = source.readRecords(since, now)
+                    nextToken = { source.newToken() }
+                } else {
+                    fetched = page.records
+                    nextToken = { page.nextToken }
+                }
+            }
+        }
+
+        val newestHeightMeters = fetched
+            .filter { it.type == RawMeasurementType.HEIGHT }
+            .maxByOrNull { it.instant }
+            ?.value
+        val heightMeters = newestHeightMeters ?: state.cachedHeightMeters
+
+        val aggregation = BodyMeasurementAggregator.aggregate(
+            records = fetched,
+            now = now,
+            ownPackage = ownPackage,
+            heightMeters = heightMeters
+        )
+        val pending = aggregation.measurements
+            .filter { it.recordId !in state.processedRecordIds }
+
+        if (pending.isEmpty()) {
+            persistTerminal(
+                state, nextToken(), heightMeters,
+                newlyProcessedIds = emptyList(),
+                keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                now = now
+            )
+            return SyncResult.Idle
+        }
+
+        val records = pending.map { it.toGarminRecord() }
+        return when (val outcome = gateway(records)) {
+            is UploadOutcome.Success -> {
+                persistTerminal(
+                    state, nextToken(), heightMeters,
+                    newlyProcessedIds = pending.map { it.recordId },
+                    keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                    now = now
+                )
+                SyncResult.Uploaded(outcome.uploadedCount)
+            }
+            is UploadOutcome.NotNeeded -> {
+                persistTerminal(
+                    state, nextToken(), heightMeters,
+                    newlyProcessedIds = pending.map { it.recordId },
+                    keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                    now = now
+                )
+                SyncResult.Idle
+            }
+            is UploadOutcome.Partial -> {
+                persistTerminal(
+                    state, nextToken(), heightMeters,
+                    newlyProcessedIds = pending.map { it.recordId },
+                    keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                    now = now
+                )
+                SyncResult.PartialUploaded(outcome.uploadedCount, outcome.failureMessages)
+            }
+            is UploadOutcome.Retryable -> SyncResult.Retryable
+            UploadOutcome.LoginRequired -> SyncResult.LoginRequired
+        }
+    }
+
+    /**
+     * The single write path — everything terminal funnels through here so the
+     * Retryable/LoginRequired "no write" discipline stays provable.
+     */
+    private fun persistTerminal(
+        previous: SyncState,
+        nextToken: String,
+        heightMeters: Double?,
+        newlyProcessedIds: List<String>,
+        keepLastSync: Boolean,
+        now: Instant
+    ) {
+        stateStore.save(
+            SyncState(
+                changesToken = nextToken,
+                lastSyncInstantEpochMs = if (keepLastSync) {
+                    previous.lastSyncInstantEpochMs
+                } else {
+                    now.toEpochMilli()
+                },
+                processedRecordIds = previous.processedRecordIds + newlyProcessedIds,
+                cachedHeightMeters = heightMeters
+            )
+        )
+    }
+
+    companion object {
+        /** First-run (and fallback-with-no-timestamp) read window. */
+        val INITIAL_SYNC_WINDOW: Duration = Duration.ofDays(30)
+    }
+}

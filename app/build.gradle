@@ -3,20 +3,20 @@ plugins {
 }
 
 android {
-    namespace = 'com.example.tefal2garmin'
+    namespace = 'com.zamotkin.extrahealthgarmin'
     // connect-client 1.1.0 AAR metadata requires compileSdk 36 (work 2.12.0
     // needs 35 — subsumed). targetSdk stays 34: runtime opt-in is a separate,
     // deliberate decision (Strangler phase 2a note).
     compileSdk 36
     
     defaultConfig {
-        applicationId "com.example.tefal2garmin"
+        applicationId "com.zamotkin.extrahealthgarmin"
         // Health Connect era (Strangler phase 2a): connect-client targets
         // modern Android only, so the floor moves from 21 to 26.
         minSdk = 26
         targetSdk = 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 2
+        versionName "2.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -40,7 +40,7 @@ android {
     buildTypes {
         debug {
             // Debug-only credentials for the Garmin DI-auth live spike
-            // (tefal2garmin-garmin-api-import-j5e.1). Declared HERE, not in
+            // (garmin-api-import-j5e.1). Declared HERE, not in
             // defaultConfig, so the release BuildConfig does not even carry
             // the fields. Supplied via Gradle properties and consumed by the
             // debug source set's GarminAuthSpike (release links a no-op);

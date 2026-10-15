@@ -1,4 +1,4 @@
-# ProGuard/R8 rules for com.example.tefal2garmin.
+# ProGuard/R8 rules for com.zamotkin.extrahealthgarmin.
 # This file completes the release build configuration referenced from
 # app/build.gradle (getDefaultProguardFile('proguard-android-optimize.txt'),
 # 'proguard-rules.pro').
