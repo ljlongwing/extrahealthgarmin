@@ -1,6 +1,6 @@
 package com.example.tefal2garmin.health
 
-import com.example.tefal2garmin.data.UploadOutcomeRecords
+import com.example.tefal2garmin.data.UploadOutcome
 import com.example.tefal2garmin.garmin.GarminWeighInRecord
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -30,7 +30,7 @@ class SyncEngineTest {
         val uploaded = mutableListOf<List<GarminWeighInRecord>>()
         val engine = engine(
             source, store,
-            gateway = { records -> uploaded += records; UploadOutcomeRecords.Success(records.size) }
+            gateway = { records -> uploaded += records; UploadOutcome.Success(records.size) }
         )
 
         val result = engine.sync()
@@ -56,7 +56,7 @@ class SyncEngineTest {
         )
         val store = CountingStore(SyncState())
         val uploaded = mutableListOf<List<GarminWeighInRecord>>()
-        val engine = engine(source, store) { records -> uploaded += records; UploadOutcomeRecords.Success(records.size) }
+        val engine = engine(source, store) { records -> uploaded += records; UploadOutcome.Success(records.size) }
 
         engine.sync()
 
@@ -88,7 +88,7 @@ class SyncEngineTest {
                 cachedHeightMeters = 1.80
             )
         )
-        val engine = engine(source, store) { UploadOutcomeRecords.Success(it.size) }
+        val engine = engine(source, store) { UploadOutcome.Success(it.size) }
 
         val result = engine.sync()
 
@@ -115,7 +115,7 @@ class SyncEngineTest {
             SyncState(changesToken = "token-1", processedRecordIds = setOf("w0"))
         )
         val gatewayCalls = mutableListOf<Int>()
-        val engine = engine(source, store) { gatewayCalls += it.size; UploadOutcomeRecords.Success(it.size) }
+        val engine = engine(source, store) { gatewayCalls += it.size; UploadOutcome.Success(it.size) }
 
         val result = engine.sync()
 
@@ -142,7 +142,7 @@ class SyncEngineTest {
             )
         )
         val store = CountingStore(SyncState(changesToken = "token-1"))
-        val engine = engine(source, store) { UploadOutcomeRecords.Retryable("429") }
+        val engine = engine(source, store) { UploadOutcome.Retryable("429") }
 
         val result = engine.sync()
 
@@ -162,7 +162,7 @@ class SyncEngineTest {
             )
         )
         val store = CountingStore(SyncState(changesToken = "token-1"))
-        val engine = engine(source, store) { UploadOutcomeRecords.LoginRequired }
+        val engine = engine(source, store) { UploadOutcome.LoginRequired }
 
         val result = engine.sync()
 
@@ -183,7 +183,7 @@ class SyncEngineTest {
         )
         val store = CountingStore(SyncState(changesToken = "token-1"))
         val engine = engine(source, store) {
-            UploadOutcomeRecords.Partial(0, listOf("Duplicate detection"))
+            UploadOutcome.Partial(0, listOf("Duplicate detection"))
         }
 
         val result = engine.sync()
@@ -220,7 +220,7 @@ class SyncEngineTest {
             )
         )
         val uploaded = mutableListOf<List<GarminWeighInRecord>>()
-        val engine = engine(source, store) { records -> uploaded += records; UploadOutcomeRecords.Success(records.size) }
+        val engine = engine(source, store) { records -> uploaded += records; UploadOutcome.Success(records.size) }
 
         val result = engine.sync()
 
@@ -251,7 +251,7 @@ class SyncEngineTest {
             SyncState(changesToken = "token-1", processedRecordIds = setOf("w0"))
         )
         val gatewayCalls = mutableListOf<Int>()
-        val engine = engine(source, store) { gatewayCalls += it.size; UploadOutcomeRecords.Success(it.size) }
+        val engine = engine(source, store) { gatewayCalls += it.size; UploadOutcome.Success(it.size) }
 
         val result = engine.sync()
 
@@ -271,7 +271,7 @@ class SyncEngineTest {
         )
         val store = CountingStore(SyncState(changesToken = "token-1"))
         val gatewayCalls = mutableListOf<Int>()
-        val engine = engine(source, store) { gatewayCalls += it.size; UploadOutcomeRecords.Success(it.size) }
+        val engine = engine(source, store) { gatewayCalls += it.size; UploadOutcome.Success(it.size) }
 
         val result = engine.sync()
 
@@ -293,7 +293,7 @@ class SyncEngineTest {
             )
         )
         val store = CountingStore(SyncState(changesToken = "token-1"))
-        val engine = engine(source, store) { UploadOutcomeRecords.NotNeeded }
+        val engine = engine(source, store) { UploadOutcome.NotNeeded }
 
         val result = engine.sync()
 
@@ -308,7 +308,7 @@ class SyncEngineTest {
     private fun engine(
         source: FakeSource,
         store: CountingStore,
-        gateway: suspend (List<GarminWeighInRecord>) -> UploadOutcomeRecords
+        gateway: suspend (List<GarminWeighInRecord>) -> UploadOutcome
     ): SyncEngine = SyncEngine(
         source = source,
         stateStore = store,

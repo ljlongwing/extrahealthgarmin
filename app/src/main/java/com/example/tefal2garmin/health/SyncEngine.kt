@@ -1,6 +1,6 @@
 package com.example.tefal2garmin.health
 
-import com.example.tefal2garmin.data.UploadOutcomeRecords
+import com.example.tefal2garmin.data.UploadOutcome
 import com.example.tefal2garmin.garmin.GarminWeighInRecord
 import java.time.Duration
 import java.time.Instant
@@ -43,8 +43,8 @@ sealed class SyncResult {
  *  3. Aggregate — [BodyMeasurementAggregator] correlates companions into
  *     [WeighInMeasurement]s; young lone anchors are deferred, not uploaded.
  *  4. Dedup — anchors already in [SyncState.processedRecordIds] drop out.
- *  5. Upload — the gateway ([UploadOutcomeRecords]) decides the outcome.
- *  6. Persist — ONLY terminal-success outcomes ([UploadOutcomeRecords.Success],
+ *  5. Upload — the gateway ([UploadOutcome]) decides the outcome.
+ *  6. Persist — ONLY terminal-success outcomes ([UploadOutcome.Success],
  *     [Partial], [NotNeeded]) or an empty batch advance the token, timestamp
  *     and processed set. [Retryable] and [LoginRequired] leave the stored
  *     state untouched so the same data is retried.
@@ -56,7 +56,7 @@ sealed class SyncResult {
 class SyncEngine(
     private val source: HealthDataSource,
     private val stateStore: SyncStateStore,
-    private val gateway: suspend (List<GarminWeighInRecord>) -> UploadOutcomeRecords,
+    private val gateway: suspend (List<GarminWeighInRecord>) -> UploadOutcome,
     private val clock: () -> Instant,
     private val ownPackage: String
 ) {
@@ -114,7 +114,7 @@ class SyncEngine(
 
         val records = pending.map { it.toGarminRecord() }
         return when (val outcome = gateway(records)) {
-            is UploadOutcomeRecords.Success -> {
+            is UploadOutcome.Success -> {
                 persistTerminal(
                     state, nextToken(), heightMeters,
                     newlyProcessedIds = pending.map { it.recordId },
@@ -123,7 +123,7 @@ class SyncEngine(
                 )
                 SyncResult.Uploaded(outcome.uploadedCount)
             }
-            is UploadOutcomeRecords.NotNeeded -> {
+            is UploadOutcome.NotNeeded -> {
                 persistTerminal(
                     state, nextToken(), heightMeters,
                     newlyProcessedIds = pending.map { it.recordId },
@@ -132,7 +132,7 @@ class SyncEngine(
                 )
                 SyncResult.Idle
             }
-            is UploadOutcomeRecords.Partial -> {
+            is UploadOutcome.Partial -> {
                 persistTerminal(
                     state, nextToken(), heightMeters,
                     newlyProcessedIds = pending.map { it.recordId },
@@ -141,8 +141,8 @@ class SyncEngine(
                 )
                 SyncResult.PartialUploaded(outcome.uploadedCount, outcome.failureMessages)
             }
-            is UploadOutcomeRecords.Retryable -> SyncResult.Retryable
-            UploadOutcomeRecords.LoginRequired -> SyncResult.LoginRequired
+            is UploadOutcome.Retryable -> SyncResult.Retryable
+            UploadOutcome.LoginRequired -> SyncResult.LoginRequired
         }
     }
 
