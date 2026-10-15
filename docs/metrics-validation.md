@@ -41,8 +41,26 @@ rejections); revisit only if Garmin ever signals per-field failures in detailedI
 
 ## Run evidence
 
-- Backfill upload ~12:08 local (sync state: changesToken advanced, processedRecordIds
-  populated with real HC record UUIDs); re-syncs afterwards idle (journal dedup covers all).
-- Offline cycle: airplane mode mid-test; app stayed healthy, sync recovered on network return
-  (last sync shown 12:16); token never advanced on the failed attempt (sync-state inspection).
+- Backfill upload 12:06:54: `POST connectapi.garmin.com/upload-service/upload` ->
+  `201`, body_composition.fit (627 bytes), `"successes":[{"messages":[{"code":200,
+  "content":"File processed."}]}],"failures":[]`; "Загружено измерений в Garmin Connect: 38".
+- Dedup (AC-3): 5 sync taps + 2 user-driven syncs -> **0 upload POSTs**; UI "Все измерения
+  уже в Garmin Connect — загружать нечего"; journal fixed at 38 keys.
+- The 39-processed vs 38-uploaded delta: two HC anchors shared timestamp+weight;
+  `UploadJournal.filterNew` batch-dedup collapsed them — both marked processed, by design.
+- Offline cycle (AC-2): airplane on -> sync no-op clean (journal covered all; no crash,
+  PID stable); airplane off -> recovery sync clean. Sync state via run-as:
+
+| Point | token | lastSync | processed |
+|---|---|---|---|
+| after upload (12:06) | 8423 | 12:06:54 | 39 |
+| after dedup (12:08) | 8423 | 12:08:55 | 39 |
+| offline attempt (12:34) | 8423 | 12:34:02 | 39 |
+| recovery (12:34) | 8423 | 12:34:56 | 39 |
+
+  Token never advanced on any attempt without new data. The retryable-error branch (new
+  data + network down) remains covered by unit tests (SyncEngineTest) — on-device it cannot
+  fire once the journal covers everything.
+- Journal span: 38 keys `epoch:weight`, 2026-09-15 20:50 -> 2026-10-13 08:42 local,
+  weights 83.75-87.95 kg (real scale history, 30-day window).
 - Owner Garmin Connect inspection answered the visibility column above.
