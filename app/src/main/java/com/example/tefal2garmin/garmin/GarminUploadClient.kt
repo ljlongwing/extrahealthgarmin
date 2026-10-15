@@ -24,8 +24,8 @@ sealed class UploadResult {
      * [succeededKeys] lists the composite journal keys
      * ([GarminWeighInRecord.journalKey]) of records that are provably imported — it is EMPTY whenever the failure entries carry no
      * correlatable record index (conservative by design: the caller journals
-     * only provable successes and routes everything else to the fallback
-     * CSV). Never guess success.
+     * only provable successes and leaves everything else un-journaled for a
+     * retry). Never guess success.
      */
     data class Partial(
         val succeededKeys: List<String>,

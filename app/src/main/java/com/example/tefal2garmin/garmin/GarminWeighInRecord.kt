@@ -3,8 +3,8 @@ package com.example.tefal2garmin.garmin
 /**
  * One weigh-in destined for a Garmin `weight_scale` FIT upload.
  *
- * The optional fields mirror the Tefal CSV contract: percent fat and BMI may
- * be absent for a row; when null the corresponding FIT field is simply not
+ * The optional fields mirror the Health Connect record contract: percent
+ * fat and BMI may be absent for a measurement; when null the corresponding FIT field is simply not
  * set (never an encoded zero — that would silently import fake values).
  *
  * Range validation ([validateRanges]) runs BEFORE any encoding or network

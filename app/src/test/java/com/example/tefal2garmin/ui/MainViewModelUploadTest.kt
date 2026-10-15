@@ -1,18 +1,11 @@
 package com.example.tefal2garmin.ui
 
 import android.app.Application
-import android.content.ContentResolver
-import android.content.Context
-import android.content.ContextWrapper
-import android.net.TestUri
-import android.net.Uri
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
-import com.example.tefal2garmin.data.FileRepository
 import com.example.tefal2garmin.data.GarminUploadOrchestrator
 import com.example.tefal2garmin.data.LoginStatus
 import com.example.tefal2garmin.data.UploadOutcome
-import com.example.tefal2garmin.utils.CsvReader
-import com.example.tefal2garmin.utils.CsvValidator
+import com.example.tefal2garmin.garmin.GarminWeighInRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -21,7 +14,6 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -33,16 +25,14 @@ import org.mockito.Mockito.mock
 
 /**
  * Pins the MainViewModel upload state machine against the
- * GarminUploadOrchestrator contract (task tefal2garmin-garmin-api-import-j5e.4):
- * which outcome maps to which UI state, that Success/NotNeeded never surface a
- * residual CSV (no Downloads file / no browser), and the login dialog flow
- * (retry-after-login, MFA resume, resend, cancel-to-fallback, inline errors).
+ * GarminUploadOrchestrator records contract (Strangler phase 1b): which
+ * outcome maps to which UI state, that no file is ever written anywhere, and
+ * the login dialog flow (retry-after-login with the exact pending payload,
+ * MFA resume, resend, cancel-without-upload, inline errors).
  *
  * No Robolectric (broken on the current JDK — see build.gradle testOptions):
- * the ViewModel runs against the real FileRepository pipeline built on the
- * fake CsvReader used by FileRepositoryTest, Dispatchers.Main is swapped for a
- * StandardTestDispatcher, and LiveData values are read directly under
- * InstantTaskExecutorRule.
+ * Dispatchers.Main is swapped for a StandardTestDispatcher and LiveData
+ * values are read directly under InstantTaskExecutorRule.
  *
  * The orchestrator is a Mockito mock of the interface whose default Answer
  * records every call and returns the current [loginStatus]/[uploadOutcome]/
@@ -66,94 +56,51 @@ class MainViewModelUploadTest {
     private var uploadOutcome: UploadOutcome = UploadOutcome.NotNeeded
     private var storedToken: Boolean = false
 
-    /** When set, uploadNewFromCsv throws instead of returning [uploadOutcome]. */
+    /** When set, uploadNewRecords throws instead of returning [uploadOutcome]. */
     private var uploadException: Exception? = null
 
-    /**
-     * When set, fallbackResidual returns this; otherwise it answers with a
-     * Fallback echoing the csv argument, [fallbackResidualCount] and the
-     * reason argument (the "journal-filtered residual" stand-in).
-     */
-    private var fallbackOutcome: UploadOutcome.Fallback? = null
-    private var fallbackResidualCount: Int = 2
-
-    // Orchestrator call log: (email, password, mfaCode), csv payloads and
-    // fallbackResidual (csv, reason) pairs
+    // Orchestrator call log: (email, password, mfaCode) triples and the
+    // record batches handed to uploadNewRecords
     private val loginCalls = mutableListOf<Triple<String, String, String?>>()
-    private val uploadCalls = mutableListOf<String>()
-    private val fallbackCalls = mutableListOf<Pair<String, String>>()
+    private val uploadCalls = mutableListOf<List<GarminWeighInRecord>>()
 
-    // Full 15-column primary Goodvibes header, as exported by the Tefal app
-    // (same fixture as FileRepositoryTest)
-    private val primaryHeaders = "Время измерения,Вес(кг),ИМТ,Пульс(bpm),Процент жира(%),Масса тела без жира(кг),Подкожный жир(%),Висцеральный жир,Вода в организме(%),Скелетные мышцы(%),Мышечная масса(кг),Костная масса(кг),Белок(%),Величина основного обмена(kcal),Метаболический возраст"
-
-    /** Builds one full 15-column data row; date/weight/bmi/fat are the mapped columns. */
-    private fun goodvibesRow(date: String, weight: String, bmi: String, fat: String): String {
-        return listOf(
-            date, weight, bmi, "88.00", fat, "62.20", "19.40", "7.00", "56.40",
-            "44.50", "59.10", "3.11", "17.80", "1713.00", "52.00"
-        ).joinToString(",")
-    }
-
-    private val twoValidRows = listOf(
-        goodvibesRow("\"окт. 25, 2025 09:51:52\"", "79.65", "24.60", "21.90"),
-        goodvibesRow("\"окт. 21, 2025 08:20:53\"", "80.25", "24.80", "21.70")
+    /** Two distinct in-range weigh-ins — the canonical pending payload. */
+    private val twoRecords = listOf(
+        GarminWeighInRecord(epochSecondsUtc = 1_761_350_400L, weightKg = 79.65f, percentFat = 21.9f, bmi = 24.6f),
+        GarminWeighInRecord(epochSecondsUtc = 1_761_436_800L, weightKg = 80.25f, percentFat = 21.7f, bmi = 24.8f)
     )
-
-    private fun buildFileRepository(rows: List<String>): FileRepository {
-        val resolver = object : ContentResolver(null) {}
-        val lines = listOf(primaryHeaders) + rows
-        val csvReader = object : CsvReader(resolver) {
-            override fun readCsvFile(uri: Uri): List<String> = lines
-        }
-        return FileRepository(resolver, csvReader, CsvValidator(), ContextWrapper(null))
-    }
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        val orchestrator: GarminUploadOrchestrator =
-            mock(GarminUploadOrchestrator::class.java) { invocation ->
-                when (invocation.method.name) {
-                    "login" -> {
-                        loginCalls.add(
-                            Triple(
-                                invocation.getArgument(0),
-                                invocation.getArgument(1),
-                                invocation.getArgument(2)
-                            )
-                        )
-                        loginStatus
-                    }
-                    "uploadNewFromCsv" -> {
-                        uploadCalls.add(invocation.getArgument(0))
-                        val exception = uploadException
-                        if (exception != null) throw exception
-                        uploadOutcome
-                    }
-                    "fallbackResidual" -> {
-                        val residualCsvArg: String = invocation.getArgument(0)
-                        val reasonArg: String = invocation.getArgument(1)
-                        fallbackCalls.add(residualCsvArg to reasonArg)
-                        fallbackOutcome ?: UploadOutcome.Fallback(
-                            residualCsv = invocation.getArgument(0),
-                            residualCount = fallbackResidualCount,
-                            reason = invocation.getArgument(1)
-                        )
-                    }
-                    "hasStoredToken" -> storedToken
-                    else -> Mockito.RETURNS_DEFAULTS.answer(invocation)
-                }
-            }
-        // A plain Application() — the inline mock maker cannot instrument
-        // android.jar classes on this JDK; the constructor is a no-op in the
-        // mockable jar and the ViewModel never calls methods on it.
-        viewModel = MainViewModel(
-            buildFileRepository(twoValidRows),
-            orchestrator,
-            Application()
-        )
+        viewModel = MainViewModel(buildOrchestrator(), Application())
     }
+
+    /** The recording orchestrator mock — also the call log under assertion. */
+    private fun buildOrchestrator(): GarminUploadOrchestrator =
+        mock(GarminUploadOrchestrator::class.java) { invocation ->
+            when (invocation.method.name) {
+                "login" -> {
+                    loginCalls.add(
+                        Triple(
+                            invocation.getArgument(0),
+                            invocation.getArgument(1),
+                            invocation.getArgument(2)
+                        )
+                    )
+                    loginStatus
+                }
+                "uploadNewRecords" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    uploadCalls.add(invocation.getArgument(0) as List<GarminWeighInRecord>)
+                    val exception = uploadException
+                    if (exception != null) throw exception
+                    uploadOutcome
+                }
+                "hasStoredToken" -> storedToken
+                else -> Mockito.RETURNS_DEFAULTS.answer(invocation)
+            }
+        }
 
     @After
     fun tearDown() {
@@ -161,20 +108,19 @@ class MainViewModelUploadTest {
     }
 
     /**
-     * Drives the shared intent through the real conversion pipeline and waits
-     * until the upload state machine reaches [status].
+     * Starts an upload of [twoRecords] and waits until the state machine
+     * reaches [status].
      */
-    private fun shareAndAwait(status: GarminUploadStatus): MainUiState {
-        viewModel.handleShareIntent(TestUri())
+    private fun uploadAndAwait(status: GarminUploadStatus): MainUiState {
+        viewModel.startGarminUpload(twoRecords)
         pumpUntil { it.uploadStatus == status }
         return viewModel.uiState.value!!
     }
 
     /**
-     * Advances the test scheduler until [predicate] holds on the current state.
-     * The FileRepository pipeline hops onto real Dispatchers.IO, so a plain
-     * advanceUntilIdle can drain before the IO continuation is posted back —
-     * hence the poll loop with a generous deadline instead.
+     * Advances the test scheduler until [predicate] holds on the current
+     * state; a poll loop with a generous deadline keeps this robust against
+     * scheduling orderings.
      */
     private fun pumpUntil(timeoutMs: Long = 10_000, predicate: (MainUiState) -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -187,97 +133,103 @@ class MainViewModelUploadTest {
         fail("Timed out waiting for the upload state machine; last state: ${viewModel.uiState.value}")
     }
 
+    // ------------------------------------------------------------------ //
+    //  Outcome → UI state mapping                                         //
+    // ------------------------------------------------------------------ //
+
     @Test
-    fun conversion_success_uploads_and_skips_download_file_on_success() {
+    fun upload_success_reports_count_without_dialog() {
         uploadOutcome = UploadOutcome.Success(uploadedCount = 2)
 
-        val state = shareAndAwait(GarminUploadStatus.SUCCESS)
+        val state = uploadAndAwait(GarminUploadStatus.SUCCESS)
 
         assertEquals(
-            "the converted Garmin CSV must be uploaded exactly once",
-            1,
-            uploadCalls.size
-        )
-        assertTrue(
-            "the uploaded payload must be the Garmin CSV",
-            uploadCalls[0].startsWith("Body\nDate,Weight,Fat,BMI")
+            "the pending records must be uploaded exactly once",
+            listOf(twoRecords),
+            uploadCalls
         )
         assertEquals(2, state.uploadedCount)
-        assertNull(
-            "Success must NOT surface a residual CSV (no Downloads file, no browser)",
-            state.residualCsv
-        )
+        assertEquals(2, state.totalRecords)
         assertFalse(state.showLoginDialog)
     }
 
     @Test
-    fun not_needed_shows_nothing_new_without_fallback() {
+    fun not_needed_maps_to_status() {
         uploadOutcome = UploadOutcome.NotNeeded
 
-        val state = shareAndAwait(GarminUploadStatus.NOT_NEEDED)
+        val state = uploadAndAwait(GarminUploadStatus.NOT_NEEDED)
 
-        assertNull(
-            "NotNeeded must NOT fall back to the CSV/browser path",
-            state.residualCsv
-        )
-        assertEquals(0, state.residualCount)
         assertEquals(0, state.uploadedCount)
         assertTrue(state.uploadMessages.isEmpty())
         assertFalse(state.showLoginDialog)
     }
 
     @Test
-    fun partial_saves_residual_and_reports_counts() {
-        val residual = "Body\nDate,Weight,Fat,BMI\n2025-10-21,80.25,21.70,24.80"
+    fun partial_reports_counts_messages_and_total() {
         uploadOutcome = UploadOutcome.Partial(
             uploadedCount = 1,
-            residualCsv = residual,
-            residualCount = 1,
-            messages = listOf("row 2 rejected by Garmin")
+            failureMessages = listOf("row 2 rejected by Garmin")
         )
 
-        val state = shareAndAwait(GarminUploadStatus.PARTIAL)
+        val state = uploadAndAwait(GarminUploadStatus.PARTIAL)
 
-        assertEquals(
-            "the residual CSV must be handed to the Downloads/browser path",
-            residual,
-            state.residualCsv
-        )
         assertEquals(1, state.uploadedCount)
-        assertEquals(1, state.residualCount)
+        assertEquals(
+            "total must stay the size of the batch that was submitted",
+            2,
+            state.totalRecords
+        )
         assertEquals(listOf("row 2 rejected by Garmin"), state.uploadMessages)
     }
 
     @Test
-    fun fallback_saves_residual_and_opens_browser() {
-        val residual = "Body\nDate,Weight,Fat,BMI\n2025-10-25,79.65,21.90,24.60\n2025-10-21,80.25,21.70,24.80"
-        uploadOutcome = UploadOutcome.Fallback(
-            residualCsv = residual,
-            residualCount = 2,
-            reason = "upload API unavailable"
-        )
+    fun retryable_maps_to_status_with_reason() {
+        uploadOutcome = UploadOutcome.Retryable("Upload returned HTTP 429 - rate limited")
 
-        val state = shareAndAwait(GarminUploadStatus.FALLBACK)
+        val state = uploadAndAwait(GarminUploadStatus.RETRYABLE)
 
         assertEquals(
-            "the full residual CSV must reach the save+open machinery",
-            residual,
-            state.residualCsv
+            listOf("Upload returned HTTP 429 - rate limited"),
+            state.uploadMessages
         )
-        assertEquals(2, state.residualCount)
-        assertEquals(listOf("upload API unavailable"), state.uploadMessages)
+        assertEquals(0, state.uploadedCount)
+        assertFalse(state.showLoginDialog)
     }
 
     @Test
-    fun login_required_shows_dialog_then_upload_retries_after_login() {
+    fun login_required_opens_dialog_and_keeps_records_pending() {
         uploadOutcome = UploadOutcome.LoginRequired
-        viewModel.handleShareIntent(TestUri())
-        pumpUntil { it.showLoginDialog }
 
-        assertEquals(
-            GarminUploadStatus.LOGIN_REQUIRED,
-            viewModel.uiState.value!!.uploadStatus
-        )
+        val state = uploadAndAwait(GarminUploadStatus.LOGIN_REQUIRED)
+
+        assertTrue("LoginRequired must open the login dialog", state.showLoginDialog)
+        assertEquals(1, uploadCalls.size)
+    }
+
+    /**
+     * The orchestrator throwing across uploadNewRecords (it never should, but
+     * defensively) must land on the retryable status — nothing is written
+     * anywhere and nothing crashes.
+     */
+    @Test
+    fun orchestrator_exception_maps_to_retryable() {
+        uploadException = RuntimeException("upload pipeline exploded")
+
+        val state = uploadAndAwait(GarminUploadStatus.RETRYABLE)
+
+        assertEquals(1, uploadCalls.size)
+        assertEquals(listOf("upload pipeline exploded"), state.uploadMessages)
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Login flow                                                         //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    fun login_success_retries_pending_records_exactly() {
+        uploadOutcome = UploadOutcome.LoginRequired
+        viewModel.startGarminUpload(twoRecords)
+        pumpUntil { it.showLoginDialog }
 
         loginStatus = LoginStatus.Success
         uploadOutcome = UploadOutcome.Success(uploadedCount = 2)
@@ -292,17 +244,37 @@ class MainViewModelUploadTest {
             loginCalls.single()
         )
         assertEquals(
-            "login success must retry the upload with the SAME csv payload",
+            "login success must retry the upload with the SAME records",
             2,
             uploadCalls.size
         )
         assertEquals("retry payload must be identical", uploadCalls[0], uploadCalls[1])
     }
 
+    /**
+     * There is no data source yet: a plain
+     * Connect-Garmin login with nothing pending must only report connected —
+     * no upload attempt at all.
+     */
+    @Test
+    fun login_success_noPendingRecords_showsConnected_noUpload() {
+        loginStatus = LoginStatus.Success
+
+        viewModel.loginToGarmin("user@example.com", "hunter2")
+        pumpUntil { it.garminConnected }
+
+        val state = viewModel.uiState.value!!
+        assertTrue(state.garminConnected)
+        assertFalse(state.showLoginDialog)
+        assertNull(state.loginError)
+        assertEquals("no upload may be attempted with nothing pending", 0, uploadCalls.size)
+        assertNull("no upload status may appear", state.uploadStatus)
+    }
+
     @Test
     fun needs_mfa_flow_resumes_with_code() {
         uploadOutcome = UploadOutcome.LoginRequired
-        viewModel.handleShareIntent(TestUri())
+        viewModel.startGarminUpload(twoRecords)
         pumpUntil { it.showLoginDialog }
 
         loginStatus = LoginStatus.NeedsMfa
@@ -331,7 +303,7 @@ class MainViewModelUploadTest {
     @Test
     fun resend_code_calls_login_again() {
         uploadOutcome = UploadOutcome.LoginRequired
-        viewModel.handleShareIntent(TestUri())
+        viewModel.startGarminUpload(twoRecords)
         pumpUntil { it.showLoginDialog }
 
         loginStatus = LoginStatus.NeedsMfa
@@ -358,53 +330,34 @@ class MainViewModelUploadTest {
     }
 
     @Test
-    fun login_cancel_falls_back_to_csv() {
+    fun login_cancel_after_login_required_closes_dialog_without_retry() {
         uploadOutcome = UploadOutcome.LoginRequired
-        viewModel.handleShareIntent(TestUri())
+        viewModel.startGarminUpload(twoRecords)
         pumpUntil { it.showLoginDialog }
 
         viewModel.onLoginCancelled()
-        pumpUntil { it.uploadStatus == GarminUploadStatus.FALLBACK }
+        testDispatcher.scheduler.advanceUntilIdle()
 
         val state = viewModel.uiState.value!!
-        assertFalse(state.showLoginDialog)
+        assertFalse("cancel must close the dialog", state.showLoginDialog)
+        assertFalse(state.loginNeedsMfa)
+        assertNull(state.loginError)
         assertEquals(
-            "cancel must route the whole conversion to the residual path",
-            GarminUploadStatus.FALLBACK,
-            state.uploadStatus
-        )
-        assertNotNull(state.residualCsv)
-        assertEquals(
-            "residual = everything the repository reports as not yet journaled",
-            2,
-            state.residualCount
-        )
-        assertEquals(
-            "no retry may happen after cancel",
+            "no upload retry may happen after cancel",
             1,
             uploadCalls.size
-        )
-        assertEquals(
-            "cancel must go through the repository's journal-filtered fallback",
-            listOf(uploadCalls[0] to "Login cancelled"),
-            fallbackCalls
-        )
-        assertEquals(
-            "the residual must be exactly the csv that was about to be uploaded",
-            uploadCalls[0],
-            state.residualCsv
         )
     }
 
     /**
-     * Pins the login-cancel race (task .6 finding 2): cancelling while the
-     * login coroutine is still suspended must kill its Job, so a late Success
-     * can neither flip state nor run the upload retry.
+     * Pins the login-cancel race: cancelling while the login coroutine is
+     * still suspended must kill its Job, so a late Success can neither flip
+     * state nor run the upload retry.
      */
     @Test
     fun login_cancel_cancels_inflight_job_and_skips_upload() {
         uploadOutcome = UploadOutcome.LoginRequired
-        viewModel.handleShareIntent(TestUri())
+        viewModel.startGarminUpload(twoRecords)
         pumpUntil { it.showLoginDialog }
 
         loginStatus = LoginStatus.Success
@@ -415,7 +368,6 @@ class MainViewModelUploadTest {
         viewModel.loginToGarmin("user@example.com", "hunter2")
         viewModel.onLoginCancelled()
         testDispatcher.scheduler.advanceUntilIdle()
-        pumpUntil { it.uploadStatus == GarminUploadStatus.FALLBACK }
 
         assertEquals(
             "cancel must kill the login job before it reaches the orchestrator",
@@ -431,62 +383,17 @@ class MainViewModelUploadTest {
         assertFalse("late Success must not flip the connected flag", state.garminConnected)
         assertFalse("late Success must not reopen the dialog", state.showLoginDialog)
         assertNull("late Success must not surface a login error", state.loginError)
-        assertEquals(GarminUploadStatus.FALLBACK, state.uploadStatus)
-        assertNotNull("the fallback residual must ship", state.residualCsv)
-    }
-
-    /**
-     * The orchestrator throwing across uploadNewFromCsv (it never should, but
-     * defensively) routes the conversion to the journal-filtered residual.
-     */
-    @Test
-    fun orchestrator_exception_falls_back_to_residual() {
-        uploadException = RuntimeException("upload pipeline exploded")
-
-        val state = shareAndAwait(GarminUploadStatus.FALLBACK)
-
-        assertEquals(1, uploadCalls.size)
         assertEquals(
-            "the exception path must ask the repository for the residual",
-            listOf(uploadCalls[0] to "upload pipeline exploded"),
-            fallbackCalls
-        )
-        assertEquals(
-            "residual is what the repository handed back",
-            uploadCalls[0],
-            state.residualCsv
-        )
-        assertEquals(2, state.residualCount)
-        assertEquals(listOf("upload pipeline exploded"), state.uploadMessages)
-    }
-
-    /**
-     * Audit gap: the uploaded payload must equal the FULL Garmin CSV for the
-     * two-row Goodvibes fixture — exact string equality, not a startsWith.
-     */
-    @Test
-    fun conversion_success_payload_exact_equality() {
-        uploadOutcome = UploadOutcome.Success(uploadedCount = 2)
-
-        shareAndAwait(GarminUploadStatus.SUCCESS)
-
-        val expected = listOf(
-            "Body",
-            "Date,Weight,Fat,BMI",
-            "2025-10-25,79.65,21.90,24.60",
-            "2025-10-21,80.25,21.70,24.80"
-        ).joinToString("\n")
-        assertEquals(
-            "the uploaded payload must be the EXACT two-row Garmin CSV",
-            expected,
-            uploadCalls.single()
+            "the upload status from the failed attempt must stand",
+            GarminUploadStatus.LOGIN_REQUIRED,
+            state.uploadStatus
         )
     }
 
     @Test
     fun login_failed_shows_error_stays_in_dialog() {
         uploadOutcome = UploadOutcome.LoginRequired
-        viewModel.handleShareIntent(TestUri())
+        viewModel.startGarminUpload(twoRecords)
         pumpUntil { it.showLoginDialog }
 
         loginStatus = LoginStatus.Failed(reason = "bad credentials")
@@ -501,23 +408,19 @@ class MainViewModelUploadTest {
         assertEquals(1, uploadCalls.size)
     }
 
+    // ------------------------------------------------------------------ //
+    //  Initial state                                                      //
+    // ------------------------------------------------------------------ //
+
     @Test
-    fun connect_button_visibility_follows_token_presence() {
+    fun connect_visibility_follows_token_presence() {
         assertFalse(
             "no stored token -> Connect Garmin entry point visible",
             viewModel.uiState.value!!.garminConnected
         )
 
         storedToken = true
-        val orchestrator: GarminUploadOrchestrator =
-            mock(GarminUploadOrchestrator::class.java) { invocation ->
-                when (invocation.method.name) {
-                    "hasStoredToken" -> storedToken
-                    else -> Mockito.RETURNS_DEFAULTS.answer(invocation)
-                }
-            }
-        val connectedViewModel =
-            MainViewModel(buildFileRepository(twoValidRows), orchestrator, Application())
+        val connectedViewModel = MainViewModel(buildOrchestrator(), Application())
         assertTrue(
             "stored token -> connected status instead of the button",
             connectedViewModel.uiState.value!!.garminConnected

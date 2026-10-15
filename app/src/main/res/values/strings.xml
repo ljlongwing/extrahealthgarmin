@@ -1,72 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Tefal2Garmin Sync</string>
-    
-    <!-- Error Messages -->
-    <string name="error_empty_file">The CSV file is empty. Please select a file that contains weight measurement data.</string>
-    <string name="error_invalid_encoding">The file has invalid encoding. Please ensure the CSV file is saved in UTF-8 format.</string>
-    <string name="error_invalid_delimiter">The CSV file uses an unsupported delimiter. Please ensure the file uses commas (,) as separators.</string>
-    <string name="error_invalid_headers">The CSV file is missing required headers. Please ensure the file contains columns for date, weight, and other measurement data.</string>
-    <string name="error_file_read_failed">Failed to read the file. Please check if the file is accessible and not corrupted.</string>
-    <string name="error_processing_failed">An error occurred while processing the file. Please try again or contact support if the issue persists.</string>
-    <string name="error_conversion_failed">Failed to convert data to Garmin format. Please check your data format and try again.</string>
-    <string name="error_file_save_failed">Failed to save the output file. Please check available storage space and permissions.</string>
-    
-    <!-- Success Messages -->
-    <string name="success_file_processed">Conversion completed successfully!</string>
-    <string name="success_records_summary">Successfully processed %1$d records and generated %2$d Garmin records</string>
-    <string name="success_ready_to_save">File ready to save to device</string>
-    <string name="file_saved_auto">File saved: %s</string>
-    <string name="toast_opening_save_dialog">Opening file save dialog...</string>
-    <string name="toast_garmin_open_failed">Failed to open Garmin Connect</string>
-    
-    <!-- UI Labels -->
+    <!-- Interim home screen: the weight-data source arrives in the next update -->
+
+    <!-- Generic -->
+    <string name="status_awaiting_source">Data source setup is coming in the next update</string>
     <string name="label_try_again">Try Again</string>
-    <string name="label_open_garmin">Open Garmin Connect</string>
-    <string name="label_help">Help</string>
-
-    <!-- Main Screen Messages -->
-    <string name="welcome_message">Welcome to Tefal2Garmin Sync</string>
-    <string name="instructions_message">Share a CSV file from the Tefal Goodvibes app to convert it for Garmin Connect import</string>
-    <string name="processing_message">Processing...</string>
-
-    <!-- File Status Messages -->
-    <string name="file_received">File received: %s</string>
-    <string name="file_size_status">Size: %s | Starting validation...</string>
-    <string name="file_saved">File saved: %s</string>
-    <string name="file_save_success">File saved successfully</string>
-    <string name="file_save_failed">Failed to save file</string>
-    <string name="no_data_available">No data available to save</string>
-
-    <!-- Error Messages -->
-    <string name="unsupported_file_type">Unsupported file type</string>
-    <string name="content_not_csv">Content does not appear to be CSV data</string>
-    <string name="unsupported_file_dialog_title">Unsupported File Type</string>
-    <string name="unsupported_file_dialog_message">Unsupported file type: %1$s\n\n%2$s\n\nPlease share a CSV file exported from Tefal Goodvibes app.</string>
     <string name="dialog_ok">OK</string>
     <string name="error_occurred">Error occurred</string>
     <string name="please_try_again">Please try again</string>
-
-    <!-- Toast Messages -->
-    <string name="toast_file_save_success">File saved successfully</string>
-    <string name="toast_file_save_failed">Failed to save file</string>
-    <string name="toast_help_open_failed">Failed to open help guide</string>
-    
-    <!-- Help Dialog -->
-    <string name="help_title">Help &amp; Troubleshooting</string>
-    <string name="help_content">Common issues:\n\n• Upload error - Wait 2-3 minutes, retry\n• File not supported - Ensure .csv format, not .xlsx\n• Missing fields - Check headers: Date,Weight,Fat,BMI\n• Invalid format - Use YYYY-MM-DD dates, \'.\' decimals\n\n⚠ Never open CSV files in Excel!\n\nFor detailed troubleshooting, tap Troubleshooting Guide below.</string>
-    <string name="help_close">Close</string>
-    <string name="help_troubleshooting">Troubleshooting Guide</string>
-    
-    <!-- Processing Status Messages -->
-    <string name="status_validating_encoding">Validating file encoding...</string>
-    <string name="status_reading_csv">Reading CSV data...</string>
-    <string name="status_validating_format">Validating CSV format...</string>
-    <string name="status_validating_headers">Validating headers...</string>
-    <string name="status_processing_records">Processing records...</string>
-    <string name="status_generating_csv">Generating Garmin CSV...</string>
-
-    <!-- Garmin API Upload & Login -->
     <string name="connect_garmin">Connect Garmin</string>
     <string name="garmin_connected">Garmin connected</string>
     <string name="login_title">Sign in to Garmin</string>
@@ -81,6 +23,6 @@
     <string name="upload_in_progress">Uploading to Garmin Connect...</string>
     <string name="upload_success">Uploaded %1$d measurements to Garmin Connect</string>
     <string name="upload_not_needed">All measurements are already in Garmin Connect — nothing to upload</string>
-    <string name="upload_partial">Uploaded %1$d measurements; %2$d saved to a CSV file for manual import</string>
-    <string name="upload_fallback">Automatic upload is unavailable: %1$d measurements saved to a CSV file for manual import</string>
+    <string name="upload_partial">Uploaded %1$d of %2$d. Failed records will retry with next sync</string>
+    <string name="upload_retryable">Upload failed, will retry with next sync</string>
 </resources>

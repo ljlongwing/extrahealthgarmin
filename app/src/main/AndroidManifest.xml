@@ -2,15 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permission for reading external storage for older Android versions -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
-    <!-- Permission for writing to external storage for auto-save functionality -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-
-    <!-- Internet permission for potential future features -->
+    <!-- Internet permission for the Garmin Connect login/upload clients -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -22,7 +14,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Tefal2Garmin"
         tools:targetApi="26">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -30,80 +22,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            
-            <!--
-                CSV Share Target Filters - Supporting Multiple MIME Types
-
-                Supported CSV MIME Types (per RFC 4180 and common usage):
-                1. text/csv - Official MIME type for CSV files (RFC 4180)
-                2. text/comma-separated-values - Alternative text-based MIME type
-                3. application/csv - Application-specific CSV MIME type
-                4. application/x-csv - Non-standard but commonly used variant
-                5. text/plain - Plain text files that may contain CSV data
-                6. text/* - Catch-all for any text-based files (including CSV)
-
-                Additional MIME types that may be encountered:
-                - application/vnd.ms-excel - Sometimes used for CSV by Excel
-                - application/octet-stream - Generic binary, may contain CSV
-                - text/tab-separated-values - TSV files (can be handled as CSV)
-
-                Priority order: text/csv > text/comma-separated-values > application/csv >
-                               application/x-csv > text/plain > text/*
-            -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/csv" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/comma-separated-values" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.action.SEND_MULTIPLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/csv" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND_MULTIPLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/comma-separated-values" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/csv" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/x-csv" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/vnd.ms-excel" />
-            </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/*" />
             </intent-filter>
         </activity>
     </application>

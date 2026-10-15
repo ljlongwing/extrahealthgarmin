@@ -30,9 +30,9 @@ import org.junit.Test
  * fake that THROWS unless a test explicitly staged an upload result — every
  * zero-network claim is proven, not assumed.
  *
- * The outcome type under test is [UploadOutcomeRecords]: by design it has NO
- * residualCsv and NO Fallback variant (those compile-time facts are pinned
- * by the type itself — the CSV [UploadOutcome] keeps them for now).
+ * The outcome type under test is [UploadOutcome]: by design it has no
+ * residual path and no Fallback variant (un-journaled records simply
+ * retry on the next call).
  */
 class GarminRepositoryRecordsTest {
 
@@ -133,7 +133,7 @@ class GarminRepositoryRecordsTest {
     fun `uploadNewRecords_emptyList_returnsNotNeeded_zeroNetwork`() = runTest {
         val outcome = repository.uploadNewRecords(emptyList())
 
-        assertTrue("expected NotNeeded, was $outcome", outcome is UploadOutcomeRecords.NotNeeded)
+        assertTrue("expected NotNeeded, was $outcome", outcome is UploadOutcome.NotNeeded)
         assertEquals("zero network calls expected (fake throws on touch)", 0, remote.uploadCalls)
     }
 
@@ -141,7 +141,7 @@ class GarminRepositoryRecordsTest {
     fun `uploadNewRecords_noStoredToken_returnsLoginRequired`() = runTest {
         val outcome = repository.uploadNewRecords(listOf(weighIn(E1), weighIn(E2)))
 
-        assertTrue("expected LoginRequired, was $outcome", outcome is UploadOutcomeRecords.LoginRequired)
+        assertTrue("expected LoginRequired, was $outcome", outcome is UploadOutcome.LoginRequired)
         assertEquals("no upload may happen without tokens", 0, remote.uploadCalls)
         assertEquals("nothing journaled", 0, journal.sentCount())
     }
@@ -155,7 +155,7 @@ class GarminRepositoryRecordsTest {
 
         val outcome = repository.uploadNewRecords(records)
 
-        assertTrue("expected NotNeeded, was $outcome", outcome is UploadOutcomeRecords.NotNeeded)
+        assertTrue("expected NotNeeded, was $outcome", outcome is UploadOutcome.NotNeeded)
         assertEquals("zero network calls expected (fake throws on touch)", 0, remote.uploadCalls)
     }
 
@@ -171,8 +171,8 @@ class GarminRepositoryRecordsTest {
 
         val outcome = repository.uploadNewRecords(records)
 
-        assertTrue("expected Success, was $outcome", outcome is UploadOutcomeRecords.Success)
-        assertEquals(2, (outcome as UploadOutcomeRecords.Success).uploadedCount)
+        assertTrue("expected Success, was $outcome", outcome is UploadOutcome.Success)
+        assertEquals(2, (outcome as UploadOutcome.Success).uploadedCount)
         assertEquals(1, remote.uploadCalls)
         assertEquals(
             "records passed to the client must be the new ones in order",
@@ -206,8 +206,8 @@ class GarminRepositoryRecordsTest {
 
         val outcome = repository.uploadNewRecords(listOf(confirmed, rejected1, rejected2))
 
-        assertTrue("expected Partial, was $outcome", outcome is UploadOutcomeRecords.Partial)
-        val partial = outcome as UploadOutcomeRecords.Partial
+        assertTrue("expected Partial, was $outcome", outcome is UploadOutcome.Partial)
+        val partial = outcome as UploadOutcome.Partial
         assertEquals("uploadedCount counts only the provably imported records", 1, partial.uploadedCount)
         assertEquals(listOf("Row 2 rejected", "Row 3 rejected"), partial.failureMessages)
 
@@ -227,8 +227,8 @@ class GarminRepositoryRecordsTest {
         remote.uploadResult = UploadResult.Success(2)
         val second = repository.uploadNewRecords(listOf(confirmed, rejected1, rejected2))
 
-        assertTrue("expected Success on retry, was $second", second is UploadOutcomeRecords.Success)
-        assertEquals(2, (second as UploadOutcomeRecords.Success).uploadedCount)
+        assertTrue("expected Success on retry, was $second", second is UploadOutcome.Success)
+        assertEquals(2, (second as UploadOutcome.Success).uploadedCount)
         assertEquals(
             "retry must carry only the two unconfirmed records",
             listOf(rejected1, rejected2),
@@ -248,8 +248,8 @@ class GarminRepositoryRecordsTest {
 
         val outcome = repository.uploadNewRecords(listOf(weighIn(E1), weighIn(E2)))
 
-        assertTrue("expected Retryable, was $outcome", outcome is UploadOutcomeRecords.Retryable)
-        val retryable = outcome as UploadOutcomeRecords.Retryable
+        assertTrue("expected Retryable, was $outcome", outcome is UploadOutcome.Retryable)
+        val retryable = outcome as UploadOutcome.Retryable
         assertTrue("reason must mention the rate limit, was ${retryable.reason}", retryable.reason.contains("429"))
         assertEquals("nothing journaled", 0, journal.sentCount())
         assertEquals("journal persistence untouched", 0, journalPersistence.savedCount)
@@ -267,8 +267,8 @@ class GarminRepositoryRecordsTest {
 
         val outcome = repository.uploadNewRecords(listOf(weighIn(E1)))
 
-        assertTrue("expected Retryable, was $outcome", outcome is UploadOutcomeRecords.Retryable)
-        val retryable = outcome as UploadOutcomeRecords.Retryable
+        assertTrue("expected Retryable, was $outcome", outcome is UploadOutcome.Retryable)
+        val retryable = outcome as UploadOutcome.Retryable
         assertTrue("reason must carry the client's message, was ${retryable.reason}", retryable.reason.contains("retries exhausted"))
         assertEquals("nothing journaled", 0, journal.sentCount())
         assertEquals("journal persistence untouched", 0, journalPersistence.savedCount)
@@ -282,9 +282,9 @@ class GarminRepositoryRecordsTest {
         // (a) Local range violation short-circuits BEFORE any network call.
         val outcome = repository.uploadNewRecords(listOf(weighIn(E1), weighIn(E2, weightKg = 900f)))
 
-        assertTrue("expected Retryable, was $outcome", outcome is UploadOutcomeRecords.Retryable)
+        assertTrue("expected Retryable, was $outcome", outcome is UploadOutcome.Retryable)
         assertTrue(
-            "reason must name the range problem, was ${(outcome as UploadOutcomeRecords.Retryable).reason}",
+            "reason must name the range problem, was ${(outcome as UploadOutcome.Retryable).reason}",
             outcome.reason.contains("range")
         )
         assertEquals("range check must run BEFORE any network call", 0, remote.uploadCalls)
@@ -303,10 +303,10 @@ class GarminRepositoryRecordsTest {
 
         val second = repository2.uploadNewRecords(listOf(weighIn(E1)))
 
-        assertTrue("expected Retryable, was $second", second is UploadOutcomeRecords.Retryable)
+        assertTrue("expected Retryable, was $second", second is UploadOutcome.Retryable)
         assertTrue(
             "reason must carry the client's message",
-            (second as UploadOutcomeRecords.Retryable).reason.contains("plausible range")
+            (second as UploadOutcome.Retryable).reason.contains("plausible range")
         )
         assertEquals("journal persistence untouched", 0, journalPersistence2.savedCount)
     }
@@ -322,7 +322,7 @@ class GarminRepositoryRecordsTest {
 
         val outcome = repository.uploadNewRecords(listOf(weighIn(E1)))
 
-        assertTrue("expected LoginRequired, was $outcome", outcome is UploadOutcomeRecords.LoginRequired)
+        assertTrue("expected LoginRequired, was $outcome", outcome is UploadOutcome.LoginRequired)
         assertNull("dead tokens must be cleared", tokenStore.load())
         assertEquals("token persistence must be emptied", 1, tokenPersistence.removeCount)
         assertFalse(repository.hasStoredToken())
@@ -345,8 +345,8 @@ class GarminRepositoryRecordsTest {
 
         val outcome = repository.uploadNewRecords(listOf(weighIn(E1), weighIn(E1)))
 
-        assertTrue("expected Success, was $outcome", outcome is UploadOutcomeRecords.Success)
-        assertEquals(1, (outcome as UploadOutcomeRecords.Success).uploadedCount)
+        assertTrue("expected Success, was $outcome", outcome is UploadOutcome.Success)
+        assertEquals(1, (outcome as UploadOutcome.Success).uploadedCount)
         assertEquals("upload must be called with exactly one record", 1, remote.lastUploadRecords!!.size)
         assertEquals(1, journal.sentCount())
     }

@@ -43,7 +43,7 @@ class FileJournalPersistence(private val file: File) : JournalPersistence {
 /**
  * Local sent-records journal that decides which weigh-in records are new
  * (keys = composite `epochSecondsUtc:weightKg` strings, see
- * [GarminWeighInRecord.journalKey]), so re-sharing the same CSV never
+ * [GarminWeighInRecord.journalKey]), so re-processing the same measurement never
  * uploads a reading twice while a same-day second measurement still
  * uploads.
  *

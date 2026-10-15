@@ -2,13 +2,10 @@ package com.example.tefal2garmin.data
 
 /**
  * Outcome of uploading not-yet-journaled [com.example.tefal2garmin.garmin.GarminWeighInRecord]s
- * via [GarminUploadOrchestrator.uploadNewRecords] — the records-based
- * successor of the CSV-carrying [UploadOutcome] (Strangler phase 1a; the CSV
- * type and its users stay alive until the records path fully replaces them).
+ * via [GarminUploadOrchestrator.uploadNewRecords].
  *
- * Unlike [UploadOutcome] there is NO residual CSV here: records that were
- * not confirmed imported simply stay un-journaled, so the next call retries
- * exactly them.
+ * There is no residual file here: records that were not confirmed imported
+ * simply stay un-journaled, so the next call retries exactly them.
  *
  *  - [NotNeeded] — the journal already covers every record; zero network.
  *  - [Success] — every new record was imported ([uploadedCount] of them).
@@ -19,13 +16,13 @@ package com.example.tefal2garmin.data
  *  - [LoginRequired] — no usable stored tokens (or they were rejected and
  *    cleared); the UI must run [GarminUploadOrchestrator.login] first.
  */
-sealed class UploadOutcomeRecords {
-    object NotNeeded : UploadOutcomeRecords()
-    data class Success(val uploadedCount: Int) : UploadOutcomeRecords()
+sealed class UploadOutcome {
+    object NotNeeded : UploadOutcome()
+    data class Success(val uploadedCount: Int) : UploadOutcome()
     data class Partial(
         val uploadedCount: Int,
         val failureMessages: List<String>
-    ) : UploadOutcomeRecords()
-    data class Retryable(val reason: String) : UploadOutcomeRecords()
-    object LoginRequired : UploadOutcomeRecords()
+    ) : UploadOutcome()
+    data class Retryable(val reason: String) : UploadOutcome()
+    object LoginRequired : UploadOutcome()
 }
