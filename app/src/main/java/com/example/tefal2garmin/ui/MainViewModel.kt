@@ -17,6 +17,11 @@ import com.example.tefal2garmin.data.GarminUploadOrchestrator
 import com.example.tefal2garmin.data.LoginStatus
 import com.example.tefal2garmin.data.UploadOutcome
 import com.example.tefal2garmin.garmin.GarminWeighInRecord
+import com.example.tefal2garmin.health.HcSdkStatus
+import com.example.tefal2garmin.health.HealthPermissions
+import com.example.tefal2garmin.health.HealthSyncFacade
+import com.example.tefal2garmin.health.HealthSyncWiring
+import com.example.tefal2garmin.health.SyncResult
 
 /**
  * Semantic upload status. MainActivity maps each value to an R.string — the
@@ -46,16 +51,40 @@ data class MainUiState(
     val uploadMessages: List<String> = emptyList(),
     val showLoginDialog: Boolean = false,
     val loginNeedsMfa: Boolean = false,
-    val loginError: String? = null
+    val loginError: String? = null,
+
+    // Health Connect home-screen state (task 2b).
+
+    /** `null` until the first refreshHcStatus completes ("checking..." UI). */
+    val hcAvailable: Boolean? = null,
+    /** Foreground read permissions granted — the gate for syncing. */
+    val hcPermissionsGranted: Boolean = false,
+    /** A sync pass is in flight (manual or onResume-triggered). */
+    val hcSyncRunning: Boolean = false,
+    /** When sync state last advanced (engine truth); drives the 5-min throttle. */
+    val hcLastSyncEpochMs: Long? = null,
+    /** Measurements known to be waiting for the next pass after the last one. */
+    val hcPendingCount: Int = 0,
+    /** Non-localized error marker/reason of the last failed pass; null when fine. */
+    val hcSyncError: String? = null
 )
 
 class MainViewModel(
     private val garminUploader: GarminUploadOrchestrator,
-    application: Application
+    application: Application,
+    private val hcFacade: HealthSyncFacade = HealthSyncWiring.facade(application),
+    private val clock: () -> Long = System::currentTimeMillis
 ) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "MainViewModel"
+
+        /** onResume-triggered syncs run at most once per 5 minutes. */
+        const val RESUME_SYNC_THROTTLE_MS: Long = 5 * 60 * 1000
+
+        /** [MainUiState.hcSyncError] markers (never user-visible text). */
+        const val HC_SYNC_ERROR_RETRYABLE = "retryable"
+        const val HC_SYNC_ERROR_LOGIN_REQUIRED = "login_required"
     }
 
     private val _uiState = MutableLiveData<MainUiState>()
@@ -213,6 +242,165 @@ class MainViewModel(
         }
     }
 
+    // ------------------------------------------------------------------ //
+    //  Health Connect status + sync (task 2b)                             //
+    // ------------------------------------------------------------------ //
+
+    /**
+     * Re-reads Health Connect availability/permissions and the persisted
+     * last-sync timestamp. Called after the permission screen returns and by
+     * [onScreenResume] — a revocation while the app was backgrounded is
+     * picked up here on Android 13- (on 14+ the process is restarted).
+     */
+    fun refreshHcStatus() {
+        viewModelScope.launch { refreshHcStatusOnce() }
+    }
+
+    private suspend fun refreshHcStatusOnce() {
+        try {
+            val snapshot = hcFacade.status()
+            updateState {
+                it.copy(
+                    hcAvailable = snapshot.sdkStatus == HcSdkStatus.Available,
+                    hcPermissionsGranted = snapshot.permissionsGranted,
+                    hcLastSyncEpochMs = hcFacade.lastSyncEpochMs() ?: it.hcLastSyncEpochMs
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Health Connect status refresh failed", e)
+            updateState { it.copy(hcSyncError = e.message ?: e.javaClass.simpleName) }
+        }
+    }
+
+    /**
+     * Permission-screen result: re-derives the granted flag from the returned
+     * set (the background read is optional and may be absent), then re-reads
+     * the provider truth.
+     */
+    fun onHcPermissionsResult(granted: Set<String>) {
+        updateState {
+            it.copy(hcPermissionsGranted = HealthPermissions.hasForegroundPermissions(granted))
+        }
+        refreshHcStatus()
+    }
+
+    /** Permission set for the Health Connect permission screen launch. */
+    fun permissionsToRequest(): Set<String> = hcFacade.permissionsToRequest()
+
+    /**
+     * Manual "Sync now" (button). Runs the engine directly in a viewModelScope
+     * coroutine — NOT via SyncWorker — so the UI gets instant state. This is
+     * the documented split: the worker is background-only, the button is
+     * foreground-only. A LoginRequired here opens the login dialog.
+     */
+    fun syncNow() {
+        startSync(userInitiated = true)
+    }
+
+    /**
+     * onResume hook: refresh the Health Connect status, then kick a sync pass
+     * at most once per [RESUME_SYNC_THROTTLE_MS] (via the injectable [clock]).
+     * The persisted lastSync also throttles across process restarts and
+     * against passes the periodic SyncWorker already ran. Auto passes never
+     * pop the login dialog — a LoginRequired outcome only surfaces the
+     * Connect Garmin entry point.
+     */
+    fun onScreenResume() {
+        viewModelScope.launch {
+            refreshHcStatusOnce()
+            val state = _uiState.value ?: return@launch
+            if (state.hcAvailable != true || !state.hcPermissionsGranted) return@launch
+            val last = state.hcLastSyncEpochMs
+            if (last == null || clock() - last >= RESUME_SYNC_THROTTLE_MS) {
+                startSync(userInitiated = false)
+            }
+        }
+    }
+
+    private fun startSync(userInitiated: Boolean) {
+        val current = _uiState.value ?: return
+        if (current.hcSyncRunning) return
+        if (current.hcAvailable != true || !current.hcPermissionsGranted) return
+        updateState {
+            it.copy(
+                hcSyncRunning = true,
+                hcSyncError = null,
+                uploadStatus = GarminUploadStatus.UPLOADING,
+                uploadMessages = emptyList()
+            )
+        }
+        viewModelScope.launch {
+            try {
+                handleSyncResult(hcFacade.sync(), userInitiated)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Health Connect sync failed", e)
+                updateState { it.copy(hcSyncError = e.message ?: e.javaClass.simpleName) }
+            } finally {
+                updateState { it.copy(hcSyncRunning = false) }
+            }
+            // The sync-state store is the single source of truth for "when
+            // did state last advance": the engine leaves it untouched on
+            // Retryable and LoginRequired, so this can never advance past a
+            // failed pass. (When young lone anchors were deferred the engine
+            // deliberately keeps the timestamp put, so the next resume
+            // re-reads that window — the cheap Idle pass is the throttle.)
+            updateState { state ->
+                state.copy(hcLastSyncEpochMs = hcFacade.lastSyncEpochMs() ?: state.hcLastSyncEpochMs)
+            }
+        }
+    }
+
+    /**
+     * Maps one [SyncResult] onto the UI state, reusing the existing
+     * upload-status machine (MainActivity already renders every
+     * [GarminUploadStatus]); the hc* fields carry the sync-specific bits.
+     */
+    private fun handleSyncResult(result: SyncResult, userInitiated: Boolean) {
+        when (result) {
+            SyncResult.Idle -> updateState {
+                it.copy(uploadStatus = GarminUploadStatus.NOT_NEEDED, hcPendingCount = 0)
+            }
+            is SyncResult.Uploaded -> updateState {
+                it.copy(
+                    uploadStatus = GarminUploadStatus.SUCCESS,
+                    uploadedCount = result.uploadedCount,
+                    totalRecords = result.uploadedCount,
+                    hcPendingCount = 0
+                )
+            }
+            is SyncResult.PartialUploaded -> updateState {
+                it.copy(
+                    uploadStatus = GarminUploadStatus.PARTIAL,
+                    uploadedCount = result.uploadedCount,
+                    totalRecords = result.uploadedCount + result.failureMessages.size,
+                    uploadMessages = result.failureMessages,
+                    hcPendingCount = result.failureMessages.size
+                )
+            }
+            SyncResult.Retryable -> updateState {
+                it.copy(
+                    uploadStatus = GarminUploadStatus.RETRYABLE,
+                    uploadMessages = emptyList(),
+                    hcSyncError = HC_SYNC_ERROR_RETRYABLE
+                )
+            }
+            SyncResult.LoginRequired -> updateState {
+                val withoutDialog = it.copy(
+                    // A sync only hits LoginRequired when the stored token is
+                    // gone — surface the Connect Garmin entry point again.
+                    garminConnected = false,
+                    uploadStatus = GarminUploadStatus.LOGIN_REQUIRED,
+                    hcSyncError = HC_SYNC_ERROR_LOGIN_REQUIRED
+                )
+                if (userInitiated) withoutDialog.copy(showLoginDialog = true) else withoutDialog
+            }
+        }
+    }
+
     private fun updateState(update: (MainUiState) -> MainUiState) {
         _uiState.value = _uiState.value?.let(update) ?: MainUiState()
     }
@@ -226,7 +414,14 @@ class MainViewModelFactory(
     companion object {
         fun createInstance(application: Application): MainViewModel {
             val garminRepository = GarminRepository(application)
-            return MainViewModel(garminRepository, application)
+            return MainViewModel(
+                garminUploader = garminRepository,
+                application = application,
+                // One repository instance is shared by the login dialog and
+                // the sync gateway so MFA/token session state stays coherent.
+                hcFacade = HealthSyncWiring.facade(application, garminRepository),
+                clock = System::currentTimeMillis
+            )
         }
     }
 

@@ -22,21 +22,23 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:visibility="visible" />
 
-    <!-- Interim status line: the data source arrives in the next update -->
+    <!-- Health Connect status line (task 2b): availability / permissions,
+         tappable when an action (install/update/grant) is pending. Text is
+         set by MainActivity.renderHcStatus. -->
     <TextView
-        android:id="@+id/awaitingSourceText"
+        android:id="@+id/hcStatusText"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/status_awaiting_source"
         android:textSize="16sp"
         android:gravity="center"
         android:layout_marginBottom="32dp"
         app:layout_constraintTop_toBottomOf="@id/titleText"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:visibility="visible" />
+        android:visibility="visible"
+        tools:text="Health Connect connected" />
 
-    <!-- Progress section - visible while an upload is in flight -->
+    <!-- Progress section - visible while an upload/sync is in flight -->
     <ProgressBar
         android:id="@+id/progressBar"
         style="?android:attr/progressBarStyleHorizontal"
@@ -45,7 +47,7 @@
         android:layout_marginTop="16dp"
         android:indeterminate="true"
         android:visibility="invisible"
-        app:layout_constraintTop_toBottomOf="@id/awaitingSourceText"
+        app:layout_constraintTop_toBottomOf="@id/hcStatusText"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
@@ -62,5 +64,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:visibility="invisible" />
+
+    <!-- Last sync + pending measurements line (task 2b) -->
+    <TextView
+        android:id="@+id/hcLastSyncText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/hc_never_synced"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintTop_toBottomOf="@id/statusText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:visibility="visible" />
+
+    <!-- Manual sync trigger (task 2b); enabled once HC is ready -->
+    <Button
+        android:id="@+id/syncNowButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:text="@string/sync_now"
+        android:enabled="false"
+        app:layout_constraintTop_toBottomOf="@id/hcLastSyncText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

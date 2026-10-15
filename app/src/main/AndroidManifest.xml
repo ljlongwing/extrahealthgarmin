@@ -5,6 +5,26 @@
     <!-- Internet permission for the Garmin Connect login/upload clients -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Health Connect (task 2b): the seven synced record types plus
+         background reads for the periodic SyncWorker. Must stay in sync with
+         health/HealthPermissions.kt (HealthPermissionsTest pins the set).
+         On providers where the background read cannot be granted the worker
+         degrades gracefully (caught SecurityException, no crash). -->
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_BODY_FAT" />
+    <uses-permission android:name="android.permission.health.READ_BONE_MASS" />
+    <uses-permission android:name="android.permission.health.READ_LEAN_BODY_MASS" />
+    <uses-permission android:name="android.permission.health.READ_BODY_WATER_MASS" />
+    <uses-permission android:name="android.permission.health.READ_BASAL_METABOLIC_RATE" />
+    <uses-permission android:name="android.permission.health.READ_HEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+
+    <!-- Health Connect provider visibility (package visibility on API 30+):
+         required for sdkStatus probes and the permission screen intent. -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
     <application
         android:name=".TefalGarminApplication"
         android:allowBackup="true"
@@ -24,5 +44,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Health Connect permission-usage rationale (task 2b): the system
+             entry point behind Health Connect's "see how this app uses your
+             data". Deliberately an activity-alias onto MainActivity rather
+             than a separate activity file: the rationale launch carries the
+             health_permissions_rationale extra (see
+             MainActivity.EXTRA_HEALTH_PERMISSIONS_RATIONALE) and MainActivity
+             answers it with the privacy-policy dialog. Standard launchMode
+             means the rationale opens as its own instance on top of the
+             caller — no onNewIntent handling needed. The signature-level
+             START_VIEW_PERMISSION_USAGE permission restricts who may start
+             it. -->
+        <activity-alias
+            android:name=".HealthPermissionsRationale"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>

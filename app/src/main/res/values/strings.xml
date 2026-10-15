@@ -1,14 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Tefal2Garmin Sync</string>
-    <!-- Interim home screen: the weight-data source arrives in the next update -->
 
     <!-- Generic -->
-    <string name="status_awaiting_source">Data source setup is coming in the next update</string>
     <string name="label_try_again">Try Again</string>
     <string name="dialog_ok">OK</string>
     <string name="error_occurred">Error occurred</string>
     <string name="please_try_again">Please try again</string>
+
+    <!-- Health Connect home screen (task 2b) -->
+    <string name="hc_status_checking">Checking Health Connect\u2026</string>
+    <string name="hc_status_unavailable">Health Connect is missing or outdated \u2014 tap to install or update</string>
+    <string name="hc_status_needs_permission">Health Connect needs permissions \u2014 tap to grant</string>
+    <string name="hc_status_ready">Health Connect connected</string>
+    <string name="hc_never_synced">Never synced</string>
+    <string name="hc_last_sync">Last sync: %1$s</string>
+    <string name="hc_pending_count">Pending upload: %1$d</string>
+    <string name="sync_now">Sync now</string>
+    <string name="hc_privacy_policy_title">Data and privacy</string>
+    <string name="hc_privacy_policy_body">This app reads your weight, body fat, bone mass, lean body mass, body water, basal metabolic rate and height measurements from Health Connect on this device, combines measurements taken at the same time into one weigh-in, and uploads those weigh-ins to your Garmin Connect account.\n\nThe app only reads data \u2014 it never adds, changes or deletes anything in Health Connect.\n\nNothing is sent anywhere except Garmin Connect. No measurement values are stored by the app \u2014 only record identifiers, so the same weigh-in is never uploaded twice.</string>
+
+    <!-- Garmin connection + upload -->
     <string name="connect_garmin">Connect Garmin</string>
     <string name="garmin_connected">Garmin connected</string>
     <string name="login_title">Sign in to Garmin</string>

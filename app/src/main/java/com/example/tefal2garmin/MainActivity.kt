@@ -1,6 +1,9 @@
 package com.example.tefal2garmin
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -10,34 +13,62 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.viewModels
+import androidx.core.net.toUri
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Observer
+import com.example.tefal2garmin.health.SyncWorker
 import com.example.tefal2garmin.ui.GarminUploadStatus
 import com.example.tefal2garmin.ui.MainUiState
 import com.example.tefal2garmin.ui.MainViewModel
 import com.example.tefal2garmin.ui.MainViewModelFactory
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * Interim home screen (Strangler phase 1b): app title, an awaiting-source
- * status line and the Garmin connection entry point with its login dialog.
- * The weight-data source (Health Connect) arrives in the next update; until
- * then uploads are started programmatically through the ViewModel.
+ * Home screen (Strangler phase 2b): Health Connect status line (install /
+ * update / grant-permissions actions), last-sync + pending line, manual
+ * "Sync now", and the Garmin connection entry point with its login dialog.
+ * The periodic background sync is enqueued here too (see [SyncWorker] for the
+ * foreground/background split).
  */
 class MainActivity : AppCompatActivity() {
 
-    // Interim home screen views
+    companion object {
+        /**
+         * Launch extra marking a Health Connect permission-usage rationale
+         * launch: the VIEW_PERMISSION_USAGE activity-alias in the manifest
+         * targets this activity, and a launch carrying this extra answers
+         * with the privacy-policy dialog instead of doing nothing extra.
+         */
+        const val EXTRA_HEALTH_PERMISSIONS_RATIONALE = "health_permissions_rationale"
+
+        /**
+         * Health Connect provider package — the Play Store link target and
+         * the <queries> entry in AndroidManifest.xml.
+         */
+        private const val HC_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
+        private const val HC_PROVIDER_PLAY_URL =
+            "https://play.google.com/store/apps/details?id=$HC_PROVIDER_PACKAGE"
+    }
+
+    // Home screen views
     private lateinit var titleText: TextView
-    private lateinit var awaitingSourceText: TextView
+    private lateinit var hcStatusText: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
+    private lateinit var hcLastSyncText: TextView
+    private lateinit var syncNowButton: Button
 
     // Garmin connection entry point (task tefal2garmin-garmin-api-import-j5e.4).
-    // Created programmatically — the layout file stays untouched; the views are
-    // constrained into the existing ConstraintLayout below statusText.
+    // Created programmatically — constrained into the existing
+    // ConstraintLayout below syncNowButton.
     private lateinit var connectGarminButton: Button
     private lateinit var garminConnectedText: TextView
 
@@ -55,6 +86,16 @@ class MainActivity : AppCompatActivity() {
     private var lastShowLoginDialog = false
     private var lastGarminConnected = false
 
+    // Health Connect permission screen (Activity Result API). connect-client
+    // 1.1.0 has no Intent-based request builder — this contract is the
+    // official way to launch the permission UI, and its input is the
+    // permission set from the ViewModel.
+    private val hcPermissionLauncher = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        viewModel.onHcPermissionsResult(granted)
+    }
+
     // ViewModel
     private val viewModel: MainViewModel by viewModels {
         MainViewModelFactory(application)
@@ -67,6 +108,23 @@ class MainActivity : AppCompatActivity() {
         initializeViews()
 
         observeViewModel()
+
+        // Periodic background sync (task 2b): ~3h, network-constrained, KEEP
+        // — idempotent across every launch.
+        SyncWorker.enqueuePeriodicSync(this)
+
+        // Launched through the VIEW_PERMISSION_USAGE alias: Health Connect's
+        // "see how this app uses your data" lands here. Standard launchMode,
+        // so the rationale always arrives through onCreate of a fresh
+        // instance; no onNewIntent handling is needed.
+        if (intent?.getBooleanExtra(EXTRA_HEALTH_PERMISSIONS_RATIONALE, false) == true) {
+            showPrivacyPolicyDialog()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.onScreenResume()
     }
 
     private fun observeViewModel() {
@@ -76,7 +134,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUI(state: MainUiState) {
-        // Upload/login status text wins over the awaiting-source line
+        renderHcStatus(state)
+        renderHcSyncLine(state)
+        renderSyncButton(state)
+        // Upload/login status text wins over the HC lines
         renderUploadStatus(state)
         renderGarminConnection(state)
         renderLoginDialog(state)
@@ -84,9 +145,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializeViews() {
         titleText = findViewById(R.id.titleText)
-        awaitingSourceText = findViewById(R.id.awaitingSourceText)
+        hcStatusText = findViewById(R.id.hcStatusText)
         progressBar = findViewById(R.id.progressBar)
         statusText = findViewById(R.id.statusText)
+        hcLastSyncText = findViewById(R.id.hcLastSyncText)
+        syncNowButton = findViewById(R.id.syncNowButton)
+
+        syncNowButton.setOnClickListener { viewModel.syncNow() }
 
         // Debug-only live-spike trigger for the Garmin DI OAuth2 auth client
         // (task tefal2garmin-garmin-api-import-j5e.1): hidden long-press on
@@ -98,10 +163,10 @@ class MainActivity : AppCompatActivity() {
         //     -PGARMINSPIKE_PASSWORD=... [-PGARMINSPIKE_MFA_CODE=...]
         // Watch with: adb logcat -s MainActivity GarminAuth GarminHttp
         if (BuildConfig.DEBUG) {
-            // Attached to the awaiting-source text as well because statusText
+            // Attached to the HC status text as well because statusText
             // is INVISIBLE until an upload runs and invisible views receive
             // no touch events — the spike must be reachable on a fresh launch.
-            awaitingSourceText.setOnLongClickListener {
+            hcStatusText.setOnLongClickListener {
                 triggerGarminAuthSpike()
                 true
             }
@@ -115,9 +180,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Builds the "Connect Garmin" entry point in code (the XML layout is out of
-     * scope for this task): an outlined button when no token is stored, and a
-     * connected-status label once the ViewModel reports a stored token.
+     * Builds the "Connect Garmin" entry point in code: an outlined button
+     * when no token is stored, and a connected-status label once the
+     * ViewModel reports a stored token. Anchored below syncNowButton.
      */
     private fun addGarminConnectionViews() {
         val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ConstraintLayout
@@ -134,7 +199,7 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            topToBottom = statusText.id
+            topToBottom = syncNowButton.id
             startToStart = ConstraintLayout.LayoutParams.PARENT_ID
             endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
             topMargin = dp(16)
@@ -145,7 +210,7 @@ class MainActivity : AppCompatActivity() {
             id = View.generateViewId()
             text = getString(R.string.garmin_connected)
             gravity = Gravity.CENTER
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             visibility = View.GONE
         }
         val labelParams = ConstraintLayout.LayoutParams(
@@ -161,6 +226,119 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    // ------------------------------------------------------------------ //
+    //  Health Connect home-screen rendering                               //
+    // ------------------------------------------------------------------ //
+
+    /**
+     * HC status line: checking / missing-or-outdated (tap opens the provider
+     * in Play Store) / needs permissions (tap launches the HC permission
+     * screen) / connected (no action).
+     */
+    private fun renderHcStatus(state: MainUiState) {
+        when {
+            state.hcAvailable == null -> {
+                hcStatusText.text = getString(R.string.hc_status_checking)
+                hcStatusText.isClickable = false
+                hcStatusText.setOnClickListener(null)
+            }
+            !state.hcAvailable -> {
+                hcStatusText.text = getString(R.string.hc_status_unavailable)
+                hcStatusText.setOnClickListener { openHealthConnectInPlayStore() }
+            }
+            !state.hcPermissionsGranted -> {
+                hcStatusText.text = getString(R.string.hc_status_needs_permission)
+                hcStatusText.setOnClickListener { requestHcPermissions() }
+            }
+            else -> {
+                hcStatusText.text = getString(R.string.hc_status_ready)
+                hcStatusText.isClickable = false
+                hcStatusText.setOnClickListener(null)
+            }
+        }
+    }
+
+    /** Last sync timestamp + the pending line (only when something waits). */
+    private fun renderHcSyncLine(state: MainUiState) {
+        val lastSync = state.hcLastSyncEpochMs
+        val text = buildString {
+            append(
+                if (lastSync != null) {
+                    getString(R.string.hc_last_sync, formatDateTime(lastSync))
+                } else {
+                    getString(R.string.hc_never_synced)
+                }
+            )
+            if (state.hcPendingCount > 0) {
+                append('\n')
+                append(getString(R.string.hc_pending_count, state.hcPendingCount))
+            }
+        }
+        hcLastSyncText.text = text
+    }
+
+    private fun renderSyncButton(state: MainUiState) {
+        syncNowButton.isEnabled =
+            state.hcAvailable == true && state.hcPermissionsGranted && !state.hcSyncRunning
+    }
+
+    private fun formatDateTime(epochMs: Long): String =
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, Locale.getDefault())
+            .format(Date(epochMs))
+
+    /** Launches the Health Connect permission screen for the required set. */
+    private fun requestHcPermissions() {
+        try {
+            hcPermissionLauncher.launch(viewModel.permissionsToRequest())
+        } catch (e: ActivityNotFoundException) {
+            // The provider apk vanished between the availability check and
+            // this tap — fall back to the store.
+            openHealthConnectInPlayStore()
+        }
+    }
+
+    /**
+     * Opens the Health Connect provider page in Play Store — the action for
+     * both NotInstalled and NeedsUpdate. The market:// scheme first, the
+     * https URL as the fallback for devices without the Play app.
+     */
+    private fun openHealthConnectInPlayStore() {
+        val marketIntent = Intent(
+            Intent.ACTION_VIEW,
+            "market://details?id=$HC_PROVIDER_PACKAGE".toUri()
+        )
+        try {
+            startActivity(marketIntent)
+        } catch (e: ActivityNotFoundException) {
+            startActivity(Intent(Intent.ACTION_VIEW, HC_PROVIDER_PLAY_URL.toUri()))
+        }
+    }
+
+    /**
+     * Privacy-policy dialog shown for the VIEW_PERMISSION_USAGE rationale
+     * launch: a plain scrollable TextView, EN/RU via R.string.
+     */
+    private fun showPrivacyPolicyDialog() {
+        val padding = dp(20)
+        val textView = TextView(this).apply {
+            text = getString(R.string.hc_privacy_policy_body)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        }
+        val scrollView = ScrollView(this).apply {
+            addView(textView)
+            setPadding(padding, padding / 2, padding, 0)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.hc_privacy_policy_title))
+            .setView(scrollView)
+            .setPositiveButton(getString(R.string.dialog_ok), null)
+            .show()
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Garmin connection + upload rendering (unchanged flows)             //
+    // ------------------------------------------------------------------ //
 
     /** Button vs connected-label visibility follows the stored-token state. */
     private fun renderGarminConnection(state: MainUiState) {
