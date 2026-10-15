@@ -13,15 +13,25 @@ import java.util.Date
  * `FitEncoderWeight` wire format:
  *
  *  - one `file_id` message with type WEIGHT and `time_created` (UTC);
- *  - one `weight_scale` message per record: timestamp (field 253), weight
- *    (field 0, scale 100), percent_fat (field 1, scale 100), bmi (field 13,
- *    scale 10) — the SDK applies the profile's scale/offset when encoding,
- *    so callers pass real-world floats.
+ *  - one `weight_scale` message per record. Setters and field scales,
+ *    verified against com.garmin:fit:21.176.0 (all uint16):
+ *     - timestamp (field 253);
+ *     - weight (field 0, scale 100, kg) — `setWeight(Float)`;
+ *     - percent_fat (field 1, scale 100, %) — `setPercentFat(Float)`;
+ *     - percent_hydration (field 2, scale 100, %) — `setPercentHydration(Float)`;
+ *     - bone_mass (field 4, scale 100, kg) — `setBoneMass(Float)`;
+ *     - muscle_mass (field 5, scale 100, kg) — `setMuscleMass(Float)`;
+ *     - basal_met (field 7, scale 4, kcal/day) — `setBasalMet(Float)`;
+ *     - bmi (field 13, scale 10) — `setBmi(Float)`.
  *
- * Null [GarminWeighInRecord.percentFat]/[GarminWeighInRecord.bmi] leave the
- * field unset (never an encoded zero). Records are range-validated BEFORE
- * encoding — the uint16 wire fields would otherwise silently truncate
- * out-of-range values.
+ * The SDK applies the profile's scale/offset when encoding, so callers pass
+ * real-world floats. Note the naming bridge: Health Connect lean body mass
+ * maps to FIT `muscle_mass` (the profile has no lean-mass field), and Health
+ * Connect body water MASS arrives here already converted to a percent.
+ *
+ * Null record fields leave the FIT field unset (never an encoded zero).
+ * Records are range-validated BEFORE encoding — the uint16 wire fields would
+ * otherwise silently truncate out-of-range values.
  */
 object FitWeightFileBuilder {
 
@@ -47,6 +57,10 @@ object FitWeightFileBuilder {
             weight = record.weightKg
             record.percentFat?.let { percentFat = it }
             record.bmi?.let { bmi = it }
+            record.boneMassKg?.let { boneMass = it }
+            record.leanBodyMassKg?.let { muscleMass = it }
+            record.bodyWaterPercent?.let { percentHydration = it }
+            record.basalMetabolicRateKcal?.let { basalMet = it }
         }
 
     /** Newest record timestamp, used for file_id.time_created (UTC). */

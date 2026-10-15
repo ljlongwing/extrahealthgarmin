@@ -4,11 +4,16 @@ plugins {
 
 android {
     namespace = 'com.example.tefal2garmin'
-    compileSdk 34
+    // connect-client 1.1.0 AAR metadata requires compileSdk 36 (work 2.12.0
+    // needs 35 — subsumed). targetSdk stays 34: runtime opt-in is a separate,
+    // deliberate decision (Strangler phase 2a note).
+    compileSdk 36
     
     defaultConfig {
         applicationId "com.example.tefal2garmin"
-        minSdk = 21
+        // Health Connect era (Strangler phase 2a): connect-client targets
+        // modern Android only, so the floor moves from 21 to 26.
+        minSdk = 26
         targetSdk = 34
         versionCode 1
         versionName "1.0.0"
@@ -93,6 +98,14 @@ dependencies {
     // upload-service import (plain Java 8 bytecode, minSdk 21 compatible).
     implementation 'com.garmin:fit:21.176.0'
 
+    // Health Connect record reads + change tokens (Strangler phase 2a).
+    implementation 'androidx.health.connect:connect-client:1.1.0'
+
+    // WorkManager — periodic Health Connect sync; worker classes land in a
+    // later phase, the dependency ships now so the health/ core compiles
+    // against the final wiring.
+    implementation 'androidx.work:work-runtime-ktx:2.12.0'
+
     testImplementation 'junit:junit:4.13.2'
     testImplementation "org.jetbrains.kotlin:kotlin-test"
     testImplementation 'org.mockito:mockito-core:5.1.1'
@@ -101,6 +114,8 @@ dependencies {
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
     testImplementation 'org.robolectric:robolectric:4.12.1'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    // Health Connect test fakes (FakeHealthConnectClient) for health/ tests.
+    testImplementation 'androidx.health.connect:connect-testing:1.0.0-alpha04'
     // Real org.json for JVM unit tests — the android.jar stub returns
     // default values (see returnDefaultValues above), which would silently
     // corrupt JSON handling in the garmin/ tests.
