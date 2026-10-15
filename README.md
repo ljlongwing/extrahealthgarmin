@@ -1,12 +1,17 @@
-# Extra Health Garmin
+# Extra Health Garmin — Health Connect to Garmin Connect body-composition sync
 
-[![Android](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
+[![GitHub release](https://img.shields.io/github/v/release/zamotkin/extrahealthgarmin)](https://github.com/zamotkin/extrahealthgarmin/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/zamotkin/extrahealthgarmin/total)](https://github.com/zamotkin/extrahealthgarmin/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
+[![SDK](https://img.shields.io/badge/minSdk-26%20%C2%B7%20targetSdk-34-informational.svg)](app/build.gradle)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An Android app that syncs body-composition weigh-ins from **Health Connect** into **Garmin Connect** — automatically, in the background, with no account data ever stored beyond encrypted session tokens.
+**Extra Health Garmin** syncs body-composition weigh-ins from **Health Connect** into **Garmin Connect** — automatically, in the background, with no account data ever stored beyond encrypted session tokens. Each weigh-in is encoded as a standard FIT weight-scale file with the official Garmin FIT SDK and uploaded straight to your Garmin Connect account: no manual CSV export, no middleman server, no analytics.
 
-## 📱 Features
+Open source (MIT), no ads, no tracking — just your scale data where you want it.
+
+## 📱 Features — Health Connect → Garmin body-composition sync
 
 - **🔄 Health Connect source**: reads weight, body fat, bone mass, lean body mass, body water, basal metabolic rate and height measurements from any scale or app that writes into Health Connect
 - **🧩 Smart aggregation**: measurements taken at the same time are combined into one weigh-in (weight + fat + BMI, with the height record cached for BMI)
@@ -17,14 +22,18 @@ An Android app that syncs body-composition weigh-ins from **Health Connect** int
 - **🔁 Offline retry**: failed uploads stay retriable and ride along with the next sync pass (exponential backoff on network problems)
 - **🌍 Multilingual**: full English and Russian UI
 
-## 🚀 Quick Start
+## 🚀 Quick Start — install, link Garmin Connect, sync
 
 ### Installation
-1. Download `app-release.apk` from the releases
+
+1. Download [`app-release.apk`](https://github.com/zamotkin/extrahealthgarmin/releases/latest/download/app-release.apk) from the [latest release](https://github.com/zamotkin/extrahealthgarmin/releases/latest)
 2. Enable "Install from unknown sources" in Android settings
-3. Install the APK
+3. Install the APK (Android 8.0+ / API 26+)
+
+On first sync the app backfills weigh-ins from the last 30 days; after that it picks up only new Health Connect records.
 
 ### Usage
+
 1. **Grant permissions** — on first launch tap the Health Connect status line to install/open Health Connect and grant the read permissions
 2. **Connect Garmin** — sign in once with your Garmin email, password and (if enabled) MFA code; tokens are refreshed automatically afterwards
 3. **Sync** — tap **Sync now**, or just let the ~3-hourly background sync do it: every new weigh-in lands in Garmin Connect on its own
@@ -61,6 +70,15 @@ MVVM, single activity
 ```
 
 State is deliberately a single JSON file in `filesDir` (no Room, no DataStore): the Health Connect changes token, the last-sync instant, the processed-record-id dedup set and the cached height.
+
+## 🧰 Tech Stack
+
+- **Kotlin** on Android (minSdk 26 / targetSdk 34, compileSdk 36), single-module Gradle build
+- **Health Connect API** — reads seven body-composition record types via changes tokens
+- **Official Garmin FIT SDK** — encodes weigh-ins into a `weight_scale` FIT file
+- **WorkManager** — network-constrained ~3-hourly periodic sync with exponential backoff
+- **Android Keystore (AES)** — DI OAuth2 tokens encrypted at rest
+- MVVM + LiveData, manual wiring, no DI framework — see [CLAUDE.md](CLAUDE.md) for the full architecture notes
 
 ## 🔧 Development
 
@@ -101,12 +119,12 @@ Debug builds contain a hidden trigger that runs one live Garmin DI OAuth2 login 
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable (`app/src/test/java/com/zamotkin/extrahealthgarmin/`)
-5. Submit a pull request
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for build, test and pull-request conventions.
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [MIT License](LICENSE) — free to use, modify and redistribute.
+
+---
+
+If Extra Health Garmin saves you a manual CSV import, consider **starring the repo** — it helps other Health Connect users find it. 🌟
