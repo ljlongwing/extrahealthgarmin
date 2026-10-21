@@ -96,6 +96,9 @@ class GarminRepositoryTest {
             to: LocalDate,
             tokens: GarminTokens
         ): ExistingWeighIns = ExistingWeighIns(emptyList(), tokens)
+
+        override suspend fun fetchProfileHeightMeters(tokens: GarminTokens): ProfileHeight =
+            ProfileHeight(null, tokens)
     }
 
     /**
@@ -166,6 +169,9 @@ class GarminRepositoryTest {
             to: LocalDate,
             tokens: GarminTokens
         ): ExistingWeighIns = ExistingWeighIns(emptyList(), tokens)
+
+        override suspend fun fetchProfileHeightMeters(tokens: GarminTokens): ProfileHeight =
+            ProfileHeight(null, tokens)
 
         override fun logout() {
             logoutCalls++

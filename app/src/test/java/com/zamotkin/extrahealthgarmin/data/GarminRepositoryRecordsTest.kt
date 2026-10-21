@@ -61,6 +61,12 @@ class GarminRepositoryRecordsTest {
         var lastExistingRange: Pair<LocalDate, LocalDate>? = null
             private set
 
+        /** Garmin profile height; null = no height set (the pre-existing behavior). */
+        var profileHeightMeters: Double? = null
+        var profileException: Exception? = null
+        var profileCalls = 0
+            private set
+
         var uploadCalls = 0
             private set
         var lastUploadRecords: List<GarminWeighInRecord>? = null
@@ -96,6 +102,12 @@ class GarminRepositoryRecordsTest {
             lastExistingRange = from to to
             existingException?.let { throw it }
             return ExistingWeighIns(existingWeighIns, tokens)
+        }
+
+        override suspend fun fetchProfileHeightMeters(tokens: GarminTokens): ProfileHeight {
+            profileCalls++
+            profileException?.let { throw it }
+            return ProfileHeight(profileHeightMeters, tokens)
         }
 
         override fun logout() =
@@ -517,5 +529,58 @@ class GarminRepositoryRecordsTest {
         assertEquals(UploadOutcome.LoginRequired, outcome)
         assertNull(tokenStore.load())
         assertEquals(0, remote.uploadCalls)
+    }
+
+    // ------------------------------------------------------------------ //
+    //  BMI from the Garmin profile height                                 //
+    // ------------------------------------------------------------------ //
+
+    private fun bare(epochSecondsUtc: Long, weightKg: Float = 110.0f) =
+        GarminWeighInRecord(epochSecondsUtc, weightKg, percentFat = null, bmi = null)
+
+    @Test
+    fun `uploadNewRecords_missingBmi_filledFromProfileHeight`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.profileHeightMeters = 2.0
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
+
+        repository.uploadNewRecords(listOf(bare(morning, weightKg = 110.0f)))
+
+        assertEquals(27.5f, remote.lastUploadRecords!!.single().bmi!!, 0.001f)
+    }
+
+    @Test
+    fun `uploadNewRecords_existingBmi_keptAndNoProfileRead`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.profileHeightMeters = 2.0
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
+
+        repository.uploadNewRecords(listOf(weighIn(morning)))
+
+        assertEquals("Health Connect height wins", 24.6f, remote.lastUploadRecords!!.single().bmi!!, 0.001f)
+        assertEquals("no profile request when every record has BMI", 0, remote.profileCalls)
+    }
+
+    @Test
+    fun `uploadNewRecords_profileReadFails_uploadsWithoutBmi`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.profileException = GarminConnectionError("timeout")
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
+
+        val outcome = repository.uploadNewRecords(listOf(bare(morning)))
+
+        assertEquals(UploadOutcome.Success(1), outcome)
+        assertNull(remote.lastUploadRecords!!.single().bmi)
+    }
+
+    @Test
+    fun `uploadNewRecords_noProfileHeight_uploadsWithoutBmi`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
+
+        repository.uploadNewRecords(listOf(bare(morning)))
+
+        assertEquals(1, remote.profileCalls)
+        assertNull(remote.lastUploadRecords!!.single().bmi)
     }
 }
