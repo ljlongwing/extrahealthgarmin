@@ -59,8 +59,11 @@ data class WeighInMeasurement(
  *  - `bodyWaterPercent = waterMassKg / weightKg * 100` (Health Connect keeps
  *    water as a mass; Garmin wants a percent).
  *  - `bmi = weightKg / heightMeters^2` when a height is known.
- *  - Records this app itself wrote (`ownPackage`) never re-import — that
- *    would duplicate measurements round-tripped through Garmin.
+ *  - Records this app itself wrote (`ownPackage`) never re-import, and
+ *    neither do records written by Garmin Connect ([GARMIN_CONNECT_PACKAGE]):
+ *    with its Health Connect sharing enabled, Garmin Connect writes every
+ *    weigh-in we upload back into Health Connect, and re-importing those
+ *    would upload the same measurement again on every sync pass.
  *  - [RawMeasurementType.HEIGHT] records are neither anchors nor companions.
  *
  * Pure function of its inputs — no connect-client or Android types.
@@ -81,6 +84,7 @@ object BodyMeasurementAggregator {
     ): AggregationResult {
         val candidates = records
             .filter { it.dataOriginPackage != ownPackage }
+            .filter { it.dataOriginPackage != GARMIN_CONNECT_PACKAGE }
             .filter { it.type != RawMeasurementType.HEIGHT }
 
         val measurements = mutableListOf<WeighInMeasurement>()
@@ -157,4 +161,7 @@ object BodyMeasurementAggregator {
 
     /** Anchors younger than this without companions wait for a later pass. */
     private const val YOUNG_ANCHOR_MAX_AGE_MS = 30_000L
+
+    /** Garmin Connect's package: its Health Connect writes echo our own uploads. */
+    const val GARMIN_CONNECT_PACKAGE = "com.garmin.android.apps.connectmobile"
 }
