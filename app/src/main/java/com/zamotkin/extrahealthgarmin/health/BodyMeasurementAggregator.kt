@@ -51,6 +51,9 @@ data class WeighInMeasurement(
  *    ±60 s away merges, ±60.001 s does not.
  *  - When several same-type companions qualify, the one nearest the anchor
  *    wins.
+ *  - Companions with a value of 0 or less are "not measured", never data:
+ *    scales write 0 % body fat when bioimpedance fails (socks, feet off the
+ *    electrodes), and Garmin would chart that 0 as a real reading.
  *  - A young anchor (age < [YOUNG_ANCHOR_MAX_AGE_MS]) with no companions is
  *    deferred: body-composition readings often arrive a few seconds after
  *    the weight, so uploading immediately would ship a bare weight that a
@@ -97,6 +100,7 @@ object BodyMeasurementAggregator {
                 candidates.asSequence()
                     .filter { it.type == type }
                     .filter { it.dataOriginPackage == anchor.dataOriginPackage }
+                    .filter { it.value > 0.0 }
                     .filter { abs(offsetMs(anchor, it)) <= COMPANION_WINDOW_MS }
                     .minByOrNull { abs(offsetMs(anchor, it)) }
             }
