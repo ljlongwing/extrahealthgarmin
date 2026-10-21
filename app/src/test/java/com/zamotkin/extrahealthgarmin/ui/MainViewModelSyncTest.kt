@@ -24,6 +24,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.mockito.Mockito
+import java.time.Duration
 
 /**
  * Pins the MainViewModel Health Connect state machine (task 2b): the
@@ -59,6 +60,8 @@ class MainViewModelSyncTest {
     /** Fake clock — tests advance it to drive the onResume throttle. */
     private var nowMs = 1_000_000L
 
+    private val backfillWindows = mutableListOf<Duration>()
+
     private val fakeFacade = object : HealthSyncFacade {
         // Mirrors the production facade invariant: no granted permissions
         // without an available provider.
@@ -67,6 +70,11 @@ class MainViewModelSyncTest {
 
         override suspend fun sync(): SyncResult {
             syncCalls++
+            return hcSyncResult
+        }
+
+        override suspend fun backfill(window: Duration): SyncResult {
+            backfillWindows += window
             return hcSyncResult
         }
 
@@ -218,6 +226,20 @@ class MainViewModelSyncTest {
     }
 
     @Test
+    fun `backfill runs the facade backfill with the chosen window`() {
+        hcSyncResult = SyncResult.Uploaded(3)
+        refreshReady()
+
+        viewModel.backfill(Duration.ofDays(7))
+        pumpUntil { it.uploadStatus == GarminUploadStatus.SUCCESS }
+
+        assertEquals(listOf(Duration.ofDays(7)), backfillWindows)
+        assertEquals("backfill must not run a regular sync pass", 0, syncCalls)
+        assertEquals(3, viewModel.uiState.value!!.uploadedCount)
+        assertFalse(viewModel.uiState.value!!.hcSyncRunning)
+    }
+
+    @Test
     fun `syncNow idle maps to not needed and clears pending`() {
         hcSyncResult = SyncResult.Idle
         hcLastSyncAfterSync = nowMs
@@ -292,6 +314,7 @@ class MainViewModelSyncTest {
                 if (throwOnSync) throw IllegalStateException("provider died")
                 return SyncResult.Idle
             }
+            override suspend fun backfill(window: Duration): SyncResult = sync()
             override fun lastSyncEpochMs(): Long? = null
             override fun permissionsToRequest() = HealthPermissions.REQUIRED_PERMISSIONS
         }

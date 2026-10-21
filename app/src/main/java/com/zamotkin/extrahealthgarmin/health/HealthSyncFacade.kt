@@ -7,6 +7,7 @@ import androidx.health.connect.client.HealthConnectFeatures
 import com.zamotkin.extrahealthgarmin.data.GarminRepository
 import com.zamotkin.extrahealthgarmin.data.GarminUploadOrchestrator
 import java.io.File
+import java.time.Duration
 import java.time.Instant
 
 /** Availability + permission snapshot the home screen renders. */
@@ -36,6 +37,9 @@ interface HealthSyncFacade {
 
     /** Runs one [SyncEngine] pass with the Garmin repository as the gateway. */
     suspend fun sync(): SyncResult
+
+    /** Runs one [SyncEngine.backfill] pass over the last [window]. */
+    suspend fun backfill(window: Duration): SyncResult
 
     /** Persisted "when sync state last advanced" ([SyncState.lastSyncInstantEpochMs]). */
     fun lastSyncEpochMs(): Long?
@@ -74,8 +78,13 @@ class RealHealthSyncFacade(
         )
     }
 
-    override suspend fun sync(): SyncResult {
-        val source = HealthConnectSource.create(context) ?: return SyncResult.Idle
+    override suspend fun sync(): SyncResult = engine()?.sync() ?: SyncResult.Idle
+
+    override suspend fun backfill(window: Duration): SyncResult =
+        engine()?.backfill(window) ?: SyncResult.Idle
+
+    private suspend fun engine(): SyncEngine? {
+        val source = HealthConnectSource.create(context) ?: return null
         val uploader = uploaderProvider()
         return SyncEngine(
             source = source,
@@ -84,7 +93,7 @@ class RealHealthSyncFacade(
             clock = Instant::now,
             ownPackage = context.packageName,
             lockFile = lockFile
-        ).sync()
+        )
     }
 
     override fun lastSyncEpochMs(): Long? =

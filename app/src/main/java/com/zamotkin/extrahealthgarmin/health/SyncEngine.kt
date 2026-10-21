@@ -123,6 +123,30 @@ class SyncEngine(
         }
     }
 
+    /**
+     * On-demand backfill: re-reads the last [window] and uploads every
+     * weigh-in not yet in [SyncState.processedRecordIds]. The changes token
+     * and [SyncState.lastSyncInstantEpochMs] stay exactly as they were, so the
+     * regular [sync] flow is unaffected; the gateway's Garmin-side duplicate
+     * check keeps a re-read window from re-sending what Garmin already holds.
+     * Same lock and the same terminal-only persistence as [sync].
+     */
+    suspend fun backfill(window: Duration): SyncResult {
+        val lock = tryAcquireLock() ?: return SyncResult.Idle
+        try {
+            val state = stateStore.load()
+            val now = clock()
+            val fetched = source.readRecords(now.minus(window), now)
+            return uploadAndPersist(
+                state, fetched, now,
+                nextToken = { state.changesToken },
+                advanceLastSync = false
+            )
+        } finally {
+            releaseLock(lock)
+        }
+    }
+
     private data class HeldLock(
         val channelRaf: RandomAccessFile?,
         val lock: FileLock?
@@ -133,7 +157,7 @@ class SyncEngine(
         val now = clock()
 
         val fetched: List<WeighInRawRecord>
-        val nextToken: suspend () -> String
+        val nextToken: suspend () -> String?
         when (val token = state.changesToken) {
             null -> {
                 fetched = source.readRecords(now.minus(INITIAL_SYNC_WINDOW), now)
@@ -153,7 +177,22 @@ class SyncEngine(
                 }
             }
         }
+        return uploadAndPersist(state, fetched, now, nextToken, advanceLastSync = true)
+    }
 
+    /**
+     * Steps 2-6 of the class flow for an already-fetched batch, shared by
+     * [sync] and [backfill]. [advanceLastSync] false keeps the stored
+     * last-sync timestamp no matter what.
+     */
+    private suspend fun uploadAndPersist(
+        state: SyncState,
+        fetched: List<WeighInRawRecord>,
+        now: Instant,
+        nextToken: suspend () -> String?,
+        advanceLastSync: Boolean
+    ): SyncResult {
+        val keepLastSync = !advanceLastSync
         val newestHeightMeters = fetched
             .filter { it.type == RawMeasurementType.HEIGHT }
             .maxByOrNull { it.instant }
@@ -173,7 +212,7 @@ class SyncEngine(
             persistTerminal(
                 state, nextToken(), heightMeters,
                 newlyProcessedIds = emptyList(),
-                keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                keepLastSync = keepLastSync || aggregation.deferredAnchorIds.isNotEmpty(),
                 now = now
             )
             return SyncResult.Idle
@@ -185,7 +224,7 @@ class SyncEngine(
                 persistTerminal(
                     state, nextToken(), heightMeters,
                     newlyProcessedIds = pending.map { it.recordId },
-                    keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                    keepLastSync = keepLastSync || aggregation.deferredAnchorIds.isNotEmpty(),
                     now = now
                 )
                 SyncResult.Uploaded(outcome.uploadedCount)
@@ -194,7 +233,7 @@ class SyncEngine(
                 persistTerminal(
                     state, nextToken(), heightMeters,
                     newlyProcessedIds = pending.map { it.recordId },
-                    keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                    keepLastSync = keepLastSync || aggregation.deferredAnchorIds.isNotEmpty(),
                     now = now
                 )
                 SyncResult.Idle
@@ -203,7 +242,7 @@ class SyncEngine(
                 persistTerminal(
                     state, nextToken(), heightMeters,
                     newlyProcessedIds = pending.map { it.recordId },
-                    keepLastSync = aggregation.deferredAnchorIds.isNotEmpty(),
+                    keepLastSync = keepLastSync || aggregation.deferredAnchorIds.isNotEmpty(),
                     now = now
                 )
                 SyncResult.PartialUploaded(outcome.uploadedCount, outcome.failureMessages)
@@ -219,7 +258,7 @@ class SyncEngine(
      */
     private fun persistTerminal(
         previous: SyncState,
-        nextToken: String,
+        nextToken: String?,
         heightMeters: Double?,
         newlyProcessedIds: List<String>,
         keepLastSync: Boolean,

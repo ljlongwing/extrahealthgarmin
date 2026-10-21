@@ -91,4 +91,16 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Manual backfill (window picker dialog); same enablement as sync -->
+    <Button
+        android:id="@+id/backfillButton"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/backfill"
+        android:enabled="false"
+        app:layout_constraintTop_toBottomOf="@id/syncNowButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

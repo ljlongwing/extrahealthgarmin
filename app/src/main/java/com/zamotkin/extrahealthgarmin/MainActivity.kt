@@ -30,6 +30,7 @@ import com.zamotkin.extrahealthgarmin.ui.MainViewModelFactory
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import java.time.Duration
 
 /**
  * Home screen (Strangler phase 2b): Health Connect status line (install /
@@ -65,6 +66,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var hcLastSyncText: TextView
     private lateinit var syncNowButton: Button
+    private lateinit var backfillButton: Button
 
     // Garmin connection entry point (task garmin-api-import-j5e.4).
     // Created programmatically — constrained into the existing
@@ -151,7 +153,10 @@ class MainActivity : AppCompatActivity() {
         hcLastSyncText = findViewById(R.id.hcLastSyncText)
         syncNowButton = findViewById(R.id.syncNowButton)
 
+        backfillButton = findViewById(R.id.backfillButton)
+
         syncNowButton.setOnClickListener { viewModel.syncNow() }
+        backfillButton.setOnClickListener { showBackfillDialog() }
 
         // Debug-only live-spike trigger for the Garmin DI OAuth2 auth client
         // (task garmin-api-import-j5e.1): hidden long-press on
@@ -182,7 +187,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Builds the "Connect Garmin" entry point in code: an outlined button
      * when no token is stored, and a connected-status label once the
-     * ViewModel reports a stored token. Anchored below syncNowButton.
+     * ViewModel reports a stored token. Anchored below backfillButton.
      */
     private fun addGarminConnectionViews() {
         val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ConstraintLayout
@@ -199,7 +204,7 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            topToBottom = syncNowButton.id
+            topToBottom = backfillButton.id
             startToStart = ConstraintLayout.LayoutParams.PARENT_ID
             endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
             topMargin = dp(16)
@@ -281,6 +286,22 @@ class MainActivity : AppCompatActivity() {
     private fun renderSyncButton(state: MainUiState) {
         syncNowButton.isEnabled =
             state.hcAvailable == true && state.hcPermissionsGranted && !state.hcSyncRunning
+        backfillButton.isEnabled = syncNowButton.isEnabled
+    }
+
+    /**
+     * Backfill window picker. Health Connect only serves about 30 days of
+     * history to an app without the history-read permission, hence the cap.
+     */
+    private fun showBackfillDialog() {
+        val windows = listOf(Duration.ofDays(1), Duration.ofDays(7), Duration.ofDays(30))
+        AlertDialog.Builder(this)
+            .setTitle(R.string.backfill_title)
+            .setItems(resources.getStringArray(R.array.backfill_windows)) { _, which ->
+                viewModel.backfill(windows[which])
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun formatDateTime(epochMs: Long): String =
