@@ -87,6 +87,30 @@ class BodyMeasurementAggregatorTest {
     // ------------------------------------------------------------------ //
 
     @Test
+    fun `zero_valued_companions_count_as_not_measured`() {
+        val t = NOW.minusSeconds(120)
+
+        val result = BodyMeasurementAggregator.aggregate(
+            records = listOf(
+                weight("w1", t),
+                fat("f0", t.plusSeconds(1), percent = 0.0),
+                bone("b0", t.plusSeconds(1), massKg = 0.0),
+                water("h0", t.plusSeconds(1), massKg = 0.0),
+                bmr("m0", t.plusSeconds(1), kcal = 0.0)
+            ),
+            now = NOW,
+            ownPackage = OWN,
+            heightMeters = null
+        )
+
+        val m = result.measurements.single()
+        assertNull("0 % fat means bioimpedance failed, not 0 % fat", m.percentFat)
+        assertNull(m.boneMassKg)
+        assertNull(m.bodyWaterPercent)
+        assertNull(m.basalMetabolicRateKcal)
+    }
+
+    @Test
     fun `nearest_same_type_companion_wins`() {
         val t = NOW.minusSeconds(120)
 
