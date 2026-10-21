@@ -250,6 +250,26 @@ class BodyMeasurementAggregatorTest {
     }
 
     @Test
+    fun `garmin_connect_records_ignored`() {
+        val t = NOW.minusSeconds(120)
+        val garmin = BodyMeasurementAggregator.GARMIN_CONNECT_PACKAGE
+
+        val result = BodyMeasurementAggregator.aggregate(
+            records = listOf(
+                weight("g1", t, origin = garmin),
+                fat("gf1", t.plusSeconds(2), origin = garmin),
+                weight("w1", t.minusSeconds(600))
+            ),
+            now = NOW,
+            ownPackage = OWN,
+            heightMeters = null
+        )
+
+        assertEquals("Garmin Connect's echo of our uploads must never re-import",
+            listOf("w1"), result.measurements.map { it.recordId })
+    }
+
+    @Test
     fun `two_anchors_produce_two_measurements`() {
         val t1 = NOW.minus(Duration.ofMinutes(30))
         val t2 = NOW.minus(Duration.ofMinutes(10))
