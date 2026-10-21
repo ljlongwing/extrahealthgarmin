@@ -7,7 +7,8 @@ package com.zamotkin.extrahealthgarmin.data
  * There is no residual file here: records that were not confirmed imported
  * simply stay un-journaled, so the next call retries exactly them.
  *
- *  - [NotNeeded] — the journal already covers every record; zero network.
+ *  - [NotNeeded] — the journal already covers every record (zero network),
+ *    or Garmin Connect already holds every remaining one (nothing uploaded).
  *  - [Success] — every new record was imported ([uploadedCount] of them).
  *  - [Partial] — some records were confirmed imported ([uploadedCount]);
  *    [failureMessages] describes the rest, which stay retriable.

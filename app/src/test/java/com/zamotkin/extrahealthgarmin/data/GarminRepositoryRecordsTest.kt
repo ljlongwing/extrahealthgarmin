@@ -2,6 +2,7 @@ package com.zamotkin.extrahealthgarmin.data
 
 import com.zamotkin.extrahealthgarmin.garmin.GarminAuthError
 import com.zamotkin.extrahealthgarmin.garmin.GarminConnectionError
+import com.zamotkin.extrahealthgarmin.garmin.GarminExistingWeighIn
 import com.zamotkin.extrahealthgarmin.garmin.GarminTokenStore
 import com.zamotkin.extrahealthgarmin.garmin.GarminTokens
 import com.zamotkin.extrahealthgarmin.garmin.GarminTooManyRequestsError
@@ -20,6 +21,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * [GarminRepository.uploadNewRecords] (records-based contract, Strangler
@@ -49,6 +53,14 @@ class GarminRepositoryRecordsTest {
         var uploadResult: UploadResult? = null
         var uploadException: Exception? = null
 
+        /** What Garmin Connect already holds; empty = the pre-existing behavior. */
+        var existingWeighIns: List<GarminExistingWeighIn> = emptyList()
+        var existingException: Exception? = null
+        var existingCalls = 0
+            private set
+        var lastExistingRange: Pair<LocalDate, LocalDate>? = null
+            private set
+
         var uploadCalls = 0
             private set
         var lastUploadRecords: List<GarminWeighInRecord>? = null
@@ -73,6 +85,17 @@ class GarminRepositoryRecordsTest {
             return uploadResult ?: throw AssertionError(
                 "uploadWeighIns must not be called in this test (zero-network path)"
             )
+        }
+
+        override suspend fun fetchExistingWeighIns(
+            from: LocalDate,
+            to: LocalDate,
+            tokens: GarminTokens
+        ): ExistingWeighIns {
+            existingCalls++
+            lastExistingRange = from to to
+            existingException?.let { throw it }
+            return ExistingWeighIns(existingWeighIns, tokens)
         }
 
         override fun logout() =
@@ -115,7 +138,7 @@ class GarminRepositoryRecordsTest {
     private val tokenStore = GarminTokenStore(tokenPersistence, PlainTextCrypto())
     private val journalPersistence = InMemoryJournalPersistence()
     private val journal = UploadJournal(journalPersistence)
-    private val repository = GarminRepository(remote, tokenStore, journal)
+    private val repository = GarminRepository(remote, tokenStore, journal) { ZoneOffset.UTC }
 
     // ------------------------------------------------------------------ //
     //  Fixtures                                                           //
@@ -394,5 +417,105 @@ class GarminRepositoryRecordsTest {
         private const val E1 = 1_761_350_400L // 2025-10-25T00:00:00Z-ish fixture value
         private const val E2 = E1 + 86_400L
         private const val E3 = E2 + 86_400L
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Server-side dedup against Garmin Connect's weigh-in list           //
+    // ------------------------------------------------------------------ //
+
+    /** 2026-10-21T11:46:49Z — a morning weigh-in. */
+    private val morning = 1_792_583_209L
+
+    @Test
+    fun `uploadNewRecords_sameDaySameWeightInGarmin_skipsUpload_journals`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.existingWeighIns = listOf(GarminExistingWeighIn(LocalDate.parse("2026-10-21"), 110.95))
+        val record = weighIn(morning, weightKg = 110.9f)
+
+        val outcome = repository.uploadNewRecords(listOf(record))
+
+        assertTrue("already in Garmin -> NotNeeded, was $outcome", outcome is UploadOutcome.NotNeeded)
+        assertEquals("no upload when Garmin already holds it", 0, remote.uploadCalls)
+        assertTrue("journaled so the next pass skips the lookup", journal.filterNew(listOf(record)).isEmpty())
+    }
+
+    @Test
+    fun `uploadNewRecords_sameDayDifferentWeight_uploads`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.existingWeighIns = listOf(GarminExistingWeighIn(LocalDate.parse("2026-10-21"), 111.1))
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
+
+        val outcome = repository.uploadNewRecords(listOf(weighIn(morning, weightKg = 110.9f)))
+
+        assertEquals(UploadOutcome.Success(1), outcome)
+        assertEquals(1, remote.uploadCalls)
+    }
+
+    @Test
+    fun `uploadNewRecords_sameWeightOtherDay_uploads`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.existingWeighIns = listOf(GarminExistingWeighIn(LocalDate.parse("2026-10-20"), 110.9))
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
+
+        val outcome = repository.uploadNewRecords(listOf(weighIn(morning, weightKg = 110.9f)))
+
+        assertEquals(UploadOutcome.Success(1), outcome)
+    }
+
+    @Test
+    fun `uploadNewRecords_mixedBatch_uploadsOnlyMissing_journalsBoth`() = runTest {
+        tokenStore.save(TOKENS)
+        val present = weighIn(morning, weightKg = 110.9f)
+        val missing = weighIn(morning + 86_400, weightKg = 110.4f)
+        remote.existingWeighIns = listOf(GarminExistingWeighIn(LocalDate.parse("2026-10-21"), 110.9))
+        remote.uploadResult = UploadResult.Success(1, TOKENS)
+
+        val outcome = repository.uploadNewRecords(listOf(present, missing))
+
+        assertEquals(UploadOutcome.Success(1), outcome)
+        assertEquals(listOf(missing), remote.lastUploadRecords)
+        assertEquals(2, journal.sentCount())
+        assertEquals(
+            "lookup covers the batch's days with a 1-day margin",
+            LocalDate.parse("2026-10-20") to LocalDate.parse("2026-10-23"),
+            remote.lastExistingRange
+        )
+    }
+
+    @Test
+    fun `uploadNewRecords_matchesOnLocalDay_notUtcDay`() = runTest {
+        tokenStore.save(TOKENS)
+        // 2026-10-21T03:00Z is still 2026-10-20 evening in Denver.
+        val denver = GarminRepository(remote, tokenStore, journal) { ZoneId.of("America/Denver") }
+        remote.existingWeighIns = listOf(GarminExistingWeighIn(LocalDate.parse("2026-10-20"), 110.9))
+
+        val outcome = denver.uploadNewRecords(listOf(weighIn(1_792_551_600L, weightKg = 110.9f)))
+
+        assertTrue("Garmin's calendarDate is local, was $outcome", outcome is UploadOutcome.NotNeeded)
+        assertEquals(0, remote.uploadCalls)
+    }
+
+    @Test
+    fun `uploadNewRecords_lookupRateLimited_uploadsNothing_returnsRetryable`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.existingException = GarminTooManyRequestsError("429")
+
+        val outcome = repository.uploadNewRecords(listOf(weighIn(morning)))
+
+        assertTrue("a failed lookup must not risk a duplicate, was $outcome", outcome is UploadOutcome.Retryable)
+        assertEquals(0, remote.uploadCalls)
+        assertEquals("nothing journaled", 0, journal.sentCount())
+    }
+
+    @Test
+    fun `uploadNewRecords_lookupAuthError_clearsTokens_returnsLoginRequired`() = runTest {
+        tokenStore.save(TOKENS)
+        remote.existingException = GarminAuthError("401")
+
+        val outcome = repository.uploadNewRecords(listOf(weighIn(morning)))
+
+        assertEquals(UploadOutcome.LoginRequired, outcome)
+        assertNull(tokenStore.load())
+        assertEquals(0, remote.uploadCalls)
     }
 }
