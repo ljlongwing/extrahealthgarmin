@@ -7,6 +7,7 @@ import com.zamotkin.extrahealthgarmin.garmin.GarminAuthError
 import com.zamotkin.extrahealthgarmin.garmin.GarminConnectionError
 import com.zamotkin.extrahealthgarmin.garmin.GarminExistingWeighIn
 import com.zamotkin.extrahealthgarmin.garmin.GarminExistingWeighIns
+import com.zamotkin.extrahealthgarmin.garmin.GarminProfileHeight
 import com.zamotkin.extrahealthgarmin.garmin.GarminTooManyRequestsError
 import com.zamotkin.extrahealthgarmin.garmin.GarminTokenStore
 import com.zamotkin.extrahealthgarmin.garmin.GarminTokens
@@ -76,6 +77,9 @@ internal interface GarminRemote {
         tokens: GarminTokens
     ): ExistingWeighIns
 
+    /** Height (metres) from the Garmin user profile, null when unset. */
+    suspend fun fetchProfileHeightMeters(tokens: GarminTokens): ProfileHeight
+
     /**
      * Discards any pending MFA flow on the underlying auth client, exactly
      * like [com.zamotkin.extrahealthgarmin.garmin.GarminAuthClient.logout]. Needed
@@ -87,6 +91,12 @@ internal interface GarminRemote {
 /** [GarminRemote.fetchExistingWeighIns] result plus the (possibly refreshed) tokens it used. */
 internal data class ExistingWeighIns(
     val weighIns: List<GarminExistingWeighIn>,
+    val tokens: GarminTokens
+)
+
+/** [GarminRemote.fetchProfileHeightMeters] result plus the (possibly refreshed) tokens it used. */
+internal data class ProfileHeight(
+    val heightMeters: Double?,
     val tokens: GarminTokens
 )
 
@@ -114,6 +124,11 @@ internal class HttpGarminRemote(
     ): ExistingWeighIns {
         val result = authClient.apiGet(tokens, GarminExistingWeighIns.rangePath(from, to))
         return ExistingWeighIns(GarminExistingWeighIns.parse(result.body), result.tokens)
+    }
+
+    override suspend fun fetchProfileHeightMeters(tokens: GarminTokens): ProfileHeight {
+        val result = authClient.apiGet(tokens, GarminProfileHeight.PATH)
+        return ProfileHeight(GarminProfileHeight.parseMeters(result.body), result.tokens)
     }
 
     override fun logout() = authClient.logout()
@@ -265,7 +280,8 @@ class GarminRepository internal constructor(
                     tokenStore.save(existing.tokens)
                     return@withContext UploadOutcome.NotNeeded
                 }
-                when (val result = remote.uploadWeighIns(toUpload, existing.tokens)) {
+                val (uploadBatch, uploadTokens) = withProfileBmi(toUpload, existing.tokens)
+                when (val result = remote.uploadWeighIns(uploadBatch, uploadTokens)) {
                     is UploadResult.Success -> {
                         journal.markSent(toUpload.map { it.journalKey() })
                         // Persist the (possibly rotated) tokens the upload actually
@@ -307,6 +323,31 @@ class GarminRepository internal constructor(
                 UploadOutcome.Retryable("Unexpected error: ${reasonOf(e)}")
             }
         }
+
+    /**
+     * Fills a missing BMI from the Garmin profile height (Health Connect often
+     * has no height record). Best effort: when the profile read fails or has
+     * no height, the records go up without BMI, exactly as before. Auth errors
+     * propagate so the caller clears the tokens as for any other request.
+     */
+    private suspend fun withProfileBmi(
+        records: List<GarminWeighInRecord>,
+        tokens: GarminTokens
+    ): Pair<List<GarminWeighInRecord>, GarminTokens> {
+        if (records.none { it.bmi == null }) return records to tokens
+        val profile = try {
+            remote.fetchProfileHeightMeters(tokens)
+        } catch (e: GarminConnectionError) {
+            Log.w(TAG, "Upload: profile height unavailable (${reasonOf(e)}) - uploading without BMI")
+            return records to tokens
+        } catch (e: GarminTooManyRequestsError) {
+            Log.w(TAG, "Upload: profile height rate limited - uploading without BMI")
+            return records to tokens
+        }
+        val height = profile.heightMeters ?: return records to profile.tokens
+        Log.d(TAG, "Upload: BMI from Garmin profile height ${"%.2f".format(height)} m")
+        return records.map { GarminProfileHeight.withBmi(it, height) } to profile.tokens
+    }
 
     companion object {
         private const val TAG = "GarminRepository"
