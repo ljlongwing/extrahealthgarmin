@@ -44,4 +44,18 @@
     <string name="upload_not_needed">All measurements are already in Garmin Connect — nothing to upload</string>
     <string name="upload_partial">Uploaded %1$d of %2$d. Failed records will retry with next sync</string>
     <string name="upload_retryable">Upload failed, will retry with next sync</string>
+    <!-- Background-sync problem notifications (health/SyncAlerts.kt) -->
+    <string name="alert_channel_name">Sync problems</string>
+    <string name="alert_login_title">Garmin sign-in needed</string>
+    <string name="alert_login_text">Weigh-ins are not reaching Garmin Connect. Tap to sign in again.</string>
+    <string name="alert_hc_access_title">Health Connect access lost</string>
+    <string name="alert_hc_access_text">The app can no longer read your measurements. Tap to grant access again.</string>
+    <string name="alert_rejected_title">Garmin rejected weigh-ins</string>
+    <string name="alert_rejected_text">Measurements refused by Garmin Connect (not retried): %1$d</string>
+    <string name="alert_failing_title">Sync keeps failing</string>
+    <string name="alert_failing_text">Uploads to Garmin Connect have failed for over a day. Tap to check.</string>
+    <string name="alert_paused_title">Background sync may stop</string>
+    <string name="alert_paused_text">Android may pause this app and remove its permissions if you do not open it. Tap and turn off “Pause app activity if unused”.</string>
+    <string name="alert_battery_title">Background sync is being delayed</string>
+    <string name="alert_battery_text">Battery optimization lets Android hold back the sync for hours. Tap, open Battery and choose Unrestricted.</string>
 </resources>

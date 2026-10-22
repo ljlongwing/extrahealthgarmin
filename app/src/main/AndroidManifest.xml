@@ -5,6 +5,9 @@
     <!-- Internet permission for the Garmin Connect login/upload clients -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Background-sync problem notifications (health/SyncAlerts.kt) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Health Connect (task 2b): the seven synced record types plus
          background reads for the periodic SyncWorker. Must stay in sync with
          health/HealthPermissions.kt (HealthPermissionsTest pins the set).

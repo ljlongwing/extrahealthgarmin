@@ -44,4 +44,18 @@
     <string name="upload_not_needed">Все измерения уже в Garmin Connect — загружать нечего</string>
     <string name="upload_partial">Загружено %1$d из %2$d. Неудавшиеся записи будут повторены при следующей синхронизации</string>
     <string name="upload_retryable">Загрузка не удалась, повторим при следующей синхронизации</string>
+    <!-- Уведомления о проблемах фоновой синхронизации (health/SyncAlerts.kt) -->
+    <string name="alert_channel_name">Проблемы синхронизации</string>
+    <string name="alert_login_title">Нужно войти в Garmin</string>
+    <string name="alert_login_text">Взвешивания не попадают в Garmin Connect. Нажмите, чтобы войти снова.</string>
+    <string name="alert_hc_access_title">Нет доступа к Health Connect</string>
+    <string name="alert_hc_access_text">Приложение больше не может читать ваши измерения. Нажмите, чтобы снова дать доступ.</string>
+    <string name="alert_rejected_title">Garmin отклонил взвешивания</string>
+    <string name="alert_rejected_text">Измерений отклонено Garmin Connect (без повтора): %1$d</string>
+    <string name="alert_failing_title">Синхронизация не удаётся</string>
+    <string name="alert_failing_text">Загрузка в Garmin Connect не удаётся больше суток. Нажмите, чтобы проверить.</string>
+    <string name="alert_paused_title">Фоновая синхронизация может остановиться</string>
+    <string name="alert_paused_text">Android может приостановить приложение и отозвать его разрешения, если его не открывать. Нажмите и отключите «Приостанавливать работу, если не используется».</string>
+    <string name="alert_battery_title">Фоновая синхронизация задерживается</string>
+    <string name="alert_battery_text">Оптимизация батареи позволяет Android откладывать синхронизацию на часы. Нажмите, откройте «Батарея» и выберите «Без ограничений».</string>
 </resources>
