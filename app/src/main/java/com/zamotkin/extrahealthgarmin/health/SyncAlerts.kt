@@ -45,7 +45,10 @@ enum class SyncAlert(val notificationId: Int) {
     APP_MAY_BE_PAUSED(5),
 
     /** Battery optimization lets Android delay the periodic sync for hours. */
-    BATTERY_OPTIMIZED(6);
+    BATTERY_OPTIMIZED(6),
+
+    /** Blood pressure readings given up on (no watch heart rate for a day). */
+    BLOOD_PRESSURE_DROPPED(7);
 
     companion object {
         /** Device settings that throttle the worker, checked on every pass. */
@@ -156,6 +159,15 @@ class SyncAlertNotifier(private val context: Context) {
         }
     }
 
+    /** One-off, like [SyncAlert.RECORDS_REJECTED]: each drop is its own event. */
+    fun onBloodPressureDropped(count: Int) {
+        try {
+            post(NotificationManagerCompat.from(context), SyncAlert.BLOOD_PRESSURE_DROPPED, count)
+        } catch (e: Exception) {
+            Log.w(TAG, "Sync alert handling failed", e)
+        }
+    }
+
     private fun post(manager: NotificationManagerCompat, alert: SyncAlert, rejectedCount: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -179,6 +191,9 @@ class SyncAlertNotifier(private val context: Context) {
                 R.string.alert_paused_title to context.getString(R.string.alert_paused_text)
             SyncAlert.BATTERY_OPTIMIZED ->
                 R.string.alert_battery_title to context.getString(R.string.alert_battery_text)
+            SyncAlert.BLOOD_PRESSURE_DROPPED ->
+                R.string.alert_bp_dropped_title to
+                    context.getString(R.string.alert_bp_dropped_text, rejectedCount)
         }
         // Settings alerts open system settings; everything else is fixed in the app.
         val target = when (alert) {

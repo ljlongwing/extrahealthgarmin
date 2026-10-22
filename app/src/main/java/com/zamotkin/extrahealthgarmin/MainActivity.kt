@@ -175,6 +175,7 @@ class MainActivity : AppCompatActivity() {
 
         syncNowButton.setOnClickListener { viewModel.syncNow() }
         backfillButton.setOnClickListener { showBackfillDialog() }
+        findViewById<TextView>(R.id.bloodPressureNote).setOnClickListener { requestHcPermissions() }
 
         // Debug-only live-spike trigger for the Garmin DI OAuth2 auth client
         // (task garmin-api-import-j5e.1): hidden long-press on

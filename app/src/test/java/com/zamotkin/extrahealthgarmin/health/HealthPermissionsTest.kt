@@ -67,12 +67,21 @@ class HealthPermissionsTest {
     @Test
     fun `background read is requested only when the provider supports it`() {
         assertEquals(
-            HealthPermissions.REQUIRED_PERMISSIONS,
+            HealthPermissions.REQUIRED_PERMISSIONS + HealthPermissions.READ_BLOOD_PRESSURE,
             HealthPermissions.permissionsToRequest(backgroundReadAvailable = true)
         )
         assertEquals(
-            HealthPermissions.FOREGROUND_READ_PERMISSIONS,
+            HealthPermissions.FOREGROUND_READ_PERMISSIONS + HealthPermissions.READ_BLOOD_PRESSURE,
             HealthPermissions.permissionsToRequest(backgroundReadAvailable = false)
+        )
+    }
+
+    @Test
+    fun `blood pressure is requested but never gates the weigh-in sync`() {
+        assertEquals(false, HealthPermissions.READ_BLOOD_PRESSURE in HealthPermissions.REQUIRED_PERMISSIONS)
+        assertEquals(
+            true,
+            HealthPermissions.hasForegroundPermissions(HealthPermissions.FOREGROUND_READ_PERMISSIONS)
         )
     }
 

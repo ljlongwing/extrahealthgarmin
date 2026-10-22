@@ -346,6 +346,7 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 handleSyncResult(pass(), userInitiated)
+                syncBloodPressure()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -363,6 +364,18 @@ class MainViewModel(
             updateState { state ->
                 state.copy(hcLastSyncEpochMs = hcFacade.lastSyncEpochMs() ?: state.hcLastSyncEpochMs)
             }
+        }
+    }
+
+    /** Best effort after the weigh-in pass; results only reach the log (the worker notifies drops). */
+    private suspend fun syncBloodPressure() {
+        try {
+            val result = hcFacade.syncBloodPressure()
+            Log.d(TAG, "Blood pressure pass: $result")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Blood pressure pass failed", e)
         }
     }
 
