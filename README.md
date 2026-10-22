@@ -19,6 +19,7 @@ Open source (MIT), no ads, no tracking — just your scale data where you want i
 - **🔐 One-time login**: Garmin sign-in (email + password + MFA verification code, garth-style DI OAuth2) — only Keystore-encrypted tokens are stored, never your credentials
 - **⏱️ Background sync**: a WorkManager job re-syncs roughly every 3 hours when a network connection exists; a manual **Sync now** button is always available
 - **✅ Dedup journal**: record ids of uploaded weigh-ins are journaled on-device, so the same weigh-in is never uploaded twice — even across reinstalls of the sync flow or re-reads after a token expiry
+- **💧 Hydration (optional)**: new Health Connect water entries are added to Garmin Connect's daily hydration; deleting or editing an entry corrects Garmin's total
 - **🔁 Offline retry**: failed uploads stay retriable and ride along with the next sync pass (exponential backoff on network problems)
 - **🌍 Multilingual**: full English and Russian UI
 

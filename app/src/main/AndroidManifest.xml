@@ -23,6 +23,8 @@
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
     <!-- Optional blood pressure sync (health/BloodPressureSync.kt) -->
     <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" />
+    <!-- Optional hydration sync (health/HydrationSync.kt) -->
+    <uses-permission android:name="android.permission.health.READ_HYDRATION" />
 
     <!-- Health Connect provider visibility (package visibility on API 30+):
          required for sdkStatus probes and the permission screen intent. -->

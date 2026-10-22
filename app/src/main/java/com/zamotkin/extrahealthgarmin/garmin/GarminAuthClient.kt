@@ -255,6 +255,31 @@ class GarminAuthClient(
             throw IllegalStateException("apiGet retry loop must never exit normally")
         }
 
+    /**
+     * Authenticated API PUT of a JSON body. Refreshes once on expiry and
+     * retries once after a 401 (the request was not applied), but never on
+     * 5xx/transport errors: these PUTs are not idempotent (a hydration log
+     * adds to the day's total), so a retry could count twice.
+     */
+    suspend fun apiPutJson(tokens: GarminTokens, path: String, json: String): ApiGetResult =
+        withContext(Dispatchers.IO) {
+            var current = refreshIfNeeded(tokens)
+            var call = GarminHttp.execute(httpClient, apiPutRequest(current, path, json))
+            if (call.code == HTTP_UNAUTHORIZED) {
+                Log.d(TAG, "API PUT $path: HTTP 401 - refreshing DI token once and retrying")
+                current = refreshTokens(current)
+                call = GarminHttp.execute(httpClient, apiPutRequest(current, path, json))
+            }
+            when {
+                call.code in 200..299 -> ApiGetResult(call.bodyText, current)
+                call.code == HTTP_UNAUTHORIZED ->
+                    throw GarminAuthError("API PUT $path: token rejected (HTTP 401) even after refresh")
+                call.code == HTTP_TOO_MANY_REQUESTS ->
+                    throw GarminTooManyRequestsError("API PUT $path returned HTTP 429 - rate limited")
+                else -> throw GarminConnectionError("API PUT $path failed: HTTP ${call.code}")
+            }
+        }
+
     // ------------------------------------------------------------------ //
     //  Login response handling                                            //
     // ------------------------------------------------------------------ //
@@ -504,6 +529,15 @@ class GarminAuthClient(
             .header("Accept", "application/json")
             .apply { GarminHttp.addNativeHeaders(this) }
             .get()
+            .build()
+
+    private fun apiPutRequest(tokens: GarminTokens, path: String, json: String): Request =
+        Request.Builder()
+            .url("$apiBaseUrl$path")
+            .header("Authorization", "Bearer ${tokens.diToken}")
+            .header("Accept", "application/json")
+            .apply { GarminHttp.addNativeHeaders(this) }
+            .put(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
 
     private fun jsonBody(vararg fields: Pair<String, Any?>): okhttp3.RequestBody {

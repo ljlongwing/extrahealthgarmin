@@ -335,6 +335,7 @@ class MainViewModel(
             try {
                 handleSyncResult(hcFacade.sync(), userInitiated)
                 syncBloodPressure()
+                syncHydration()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -364,6 +365,17 @@ class MainViewModel(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Blood pressure pass failed", e)
+        }
+    }
+
+    /** Best effort after the blood pressure pass; results only reach the log. */
+    private suspend fun syncHydration() {
+        try {
+            Log.d(TAG, "Hydration pass: ${hcFacade.syncHydration()}")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Hydration pass failed", e)
         }
     }
 
