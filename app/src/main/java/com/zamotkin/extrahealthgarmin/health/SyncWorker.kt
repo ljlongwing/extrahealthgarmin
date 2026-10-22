@@ -34,6 +34,10 @@ import java.util.concurrent.TimeUnit
  * be granted (Android 14 or an old Health Connect apk) the read calls throw
  * SecurityException mid-pass. That is a degradation, not a failure — the pass
  * is dropped with success and manual foreground sync keeps working.
+ *
+ * Problems the user has to fix (sign-in gone, permissions revoked, records
+ * rejected, a day of failures, app pausing) become notifications via
+ * [SyncAlertNotifier]; the manual path shows them on screen instead.
  */
 class SyncWorker(
     context: Context,
@@ -42,17 +46,27 @@ class SyncWorker(
 
     override suspend fun doWork(): ListenableWorker.Result {
         val facade = HealthSyncWiring.facade(applicationContext)
+        val alerts = SyncAlertNotifier(applicationContext)
         return try {
-            mapSyncResult(facade.sync())
+            val result = facade.sync()
+            alerts.onPass(
+                SyncAlerts.outcomeOf(result),
+                (result as? SyncResult.PartialUploaded)?.failureMessages?.size ?: 0
+            )
+            mapSyncResult(result)
         } catch (e: SecurityException) {
             // Permissions revoked while the pass was running (or background
             // reads unsupported): degrade quietly, never crash the process.
             Log.w(TAG, "Health Connect permissions revoked mid-run; dropping this pass", e)
+            // Foreground reads still granted = background reads unsupported, not a revocation.
+            val revoked = runCatching { !facade.status().permissionsGranted }.getOrDefault(false)
+            if (revoked) alerts.onPass(PassOutcome.ACCESS_LOST)
             ListenableWorker.Result.success()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Health Connect sync pass failed; retrying via backoff", e)
+            alerts.onPass(PassOutcome.FAILED)
             ListenableWorker.Result.retry()
         }
     }

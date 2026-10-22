@@ -1,7 +1,10 @@
 package com.zamotkin.extrahealthgarmin
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
@@ -15,7 +18,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -96,6 +101,12 @@ class MainActivity : AppCompatActivity() {
         viewModel.onHcPermissionsResult(granted)
     }
 
+    // Android 13+ runtime permission for the background-sync problem
+    // notifications (SyncAlertNotifier); denial just means no alerts.
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     // ViewModel
     private val viewModel: MainViewModel by viewModels {
         MainViewModelFactory(application)
@@ -112,6 +123,13 @@ class MainActivity : AppCompatActivity() {
         // Periodic background sync (task 2b): ~3h, network-constrained, KEEP
         // — idempotent across every launch.
         SyncWorker.enqueuePeriodicSync(this)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         // Launched through the VIEW_PERMISSION_USAGE alias: Health Connect's
         // "see how this app uses your data" lands here. Standard launchMode,
