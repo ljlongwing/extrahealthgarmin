@@ -54,6 +54,7 @@ class SyncWorker(
                 (result as? SyncResult.PartialUploaded)?.failureMessages?.size ?: 0
             )
             syncBloodPressure(facade, alerts)
+            syncHydration(facade)
             mapSyncResult(result)
         } catch (e: SecurityException) {
             // Permissions revoked while the pass was running (or background
@@ -81,6 +82,17 @@ class SyncWorker(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Blood pressure pass failed", e)
+        }
+    }
+
+    /** Best effort, like blood pressure; unsent entries stay queued for the next pass. */
+    private suspend fun syncHydration(facade: HealthSyncFacade) {
+        try {
+            Log.d(TAG, "Hydration pass: ${facade.syncHydration()}")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Hydration pass failed", e)
         }
     }
 

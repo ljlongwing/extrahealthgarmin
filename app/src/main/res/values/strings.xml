@@ -61,4 +61,5 @@
     <string name="bp_note">Blood pressure: Health Connect readings have no pulse, so each one is sent with your Garmin watch\'s heart rate at that minute. Readings wait until the watch has synced. Tap to allow blood pressure access.</string>
     <string name="alert_bp_dropped_title">Blood pressure not synced</string>
     <string name="alert_bp_dropped_text">Readings dropped after a day without Garmin watch heart rate to use as the pulse: %1$d</string>
+    <string name="hydration_note">Water: new Health Connect entries are added to Garmin\'s daily hydration from the moment access is granted (older ones are not, Garmin cannot tell if they are already counted). Deleting or editing an entry corrects Garmin. Tap to allow hydration access.</string>
 </resources>

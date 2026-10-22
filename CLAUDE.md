@@ -43,7 +43,11 @@ Packages under `app/src/main/java/com/zamotkin/extrahealthgarmin/`:
   unused-app pause, battery optimization) into once-per-episode notifications. `BloodPressureSync`
   (optional READ_BLOOD_PRESSURE, own changes token + `blood-pressure-sync.json`) uploads Health Connect
   blood pressure as a FIT blood_pressure file via `GarminBloodPressureRepository`; Garmin needs a
-  pulse, so readings wait for the watch's heart rate at that minute (`dailyHeartRate`), max 24 h. `HealthPermissions` pins the permission set mirrored in the manifest.
+  pulse, so readings wait for the watch's heart rate at that minute (`dailyHeartRate`), max 24 h. `HydrationSync`
+  (optional READ_HYDRATION, own changes token + `hydration-sync.json`) PUTs each new Health Connect
+  hydration entry to Garmin's daily hydration log via `GarminHydrationRepository`; Garmin keeps only a
+  daily total, so sent entries are remembered (35 d) and deletions/edits are taken back with negative
+  logs; no backfill (Garmin cannot tell what is already counted). `HealthPermissions` pins the permission set mirrored in the manifest.
 - `garmin/` — the Garmin side. `GarminAuthClient` implements DI OAuth2 login with MFA resume
   (garth/python-garminconnect wire contract); tokens live in `GarminTokenStore`, AES-encrypted by
   `TokenCrypto` (Android Keystore, alias `extrahealthgarmin_di_tokens`). `FitWeightFileBuilder`

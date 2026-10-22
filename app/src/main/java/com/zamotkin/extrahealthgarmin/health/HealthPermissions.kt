@@ -55,6 +55,9 @@ object HealthPermissions {
     /** Optional: enables blood pressure sync, never gates the weigh-in sync. */
     const val READ_BLOOD_PRESSURE = "android.permission.health.READ_BLOOD_PRESSURE"
 
+    /** Optional: enables hydration sync, never gates the weigh-in sync. */
+    const val READ_HYDRATION = "android.permission.health.READ_HYDRATION"
+
     /** The reads a sync pass needs while the app is in the foreground. */
     val FOREGROUND_READ_PERMISSIONS: Set<String> = setOf(
         READ_WEIGHT,
@@ -89,7 +92,7 @@ object HealthPermissions {
      */
     fun permissionsToRequest(backgroundReadAvailable: Boolean): Set<String> =
         (if (backgroundReadAvailable) REQUIRED_PERMISSIONS else FOREGROUND_READ_PERMISSIONS) +
-            READ_BLOOD_PRESSURE
+            READ_BLOOD_PRESSURE + READ_HYDRATION
 
     /** Whether [granted] covers every foreground read (the sync gate). */
     fun hasForegroundPermissions(granted: Set<String>): Boolean =
