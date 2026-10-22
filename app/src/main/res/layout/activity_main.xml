@@ -91,4 +91,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Blood pressure note; tap opens the Health Connect permission screen -->
+    <TextView
+        android:id="@+id/bloodPressureNote"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/bp_note"
+        android:textSize="12sp"
+        android:gravity="center"
+        android:background="?attr/selectableItemBackground"
+        android:padding="8dp"
+        app:layout_constraintTop_toBottomOf="@id/syncNowButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

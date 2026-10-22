@@ -53,6 +53,7 @@ class SyncWorker(
                 SyncAlerts.outcomeOf(result),
                 (result as? SyncResult.PartialUploaded)?.failureMessages?.size ?: 0
             )
+            syncBloodPressure(facade, alerts)
             mapSyncResult(result)
         } catch (e: SecurityException) {
             // Permissions revoked while the pass was running (or background
@@ -68,6 +69,18 @@ class SyncWorker(
             Log.e(TAG, "Health Connect sync pass failed; retrying via backoff", e)
             alerts.onPass(PassOutcome.FAILED)
             ListenableWorker.Result.retry()
+        }
+    }
+
+    /** Best effort: a blood pressure problem never fails the weigh-in pass. */
+    private suspend fun syncBloodPressure(facade: HealthSyncFacade, alerts: SyncAlertNotifier) {
+        try {
+            val result = facade.syncBloodPressure()
+            if (result.dropped > 0) alerts.onBloodPressureDropped(result.dropped)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Blood pressure pass failed", e)
         }
     }
 

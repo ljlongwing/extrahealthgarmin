@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.changes.DeletionChange
 import androidx.health.connect.client.changes.UpsertionChange
+import androidx.health.connect.client.records.BloodPressureRecord
 import androidx.health.connect.client.records.BasalMetabolicRateRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.BoneMassRecord
@@ -18,6 +20,8 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.response.ChangesResponse
 import androidx.health.connect.client.time.TimeRangeFilter
 import java.time.Instant
+import java.time.ZoneId
+import kotlin.math.roundToInt
 import kotlin.reflect.KClass
 
 /**
@@ -67,7 +71,7 @@ data class ChangesPage(
  */
 class HealthConnectSource private constructor(
     private val client: HealthConnectClient
-) : HealthDataSource {
+) : HealthDataSource, BloodPressureSource {
 
     override suspend fun readRecords(since: Instant, to: Instant): List<WeighInRawRecord> {
         val filter = TimeRangeFilter.between(since, to)
@@ -116,6 +120,45 @@ class HealthConnectSource private constructor(
 
     override suspend fun newToken(): String =
         client.getChangesToken(ChangesTokenRequest(SYNCED_RECORD_TYPES))
+
+    // ------------------------------------------------------------------ //
+    //  Blood pressure (optional permission, own changes token)           //
+    // ------------------------------------------------------------------ //
+
+    override suspend fun canReadBloodPressure(): Boolean =
+        HealthPermissions.READ_BLOOD_PRESSURE in grantedPermissions()
+
+    override suspend fun readBloodPressure(since: Instant, to: Instant): List<HcBloodPressure> =
+        client.readRecords(
+            ReadRecordsRequest(BloodPressureRecord::class, TimeRangeFilter.between(since, to))
+        ).records.mapNotNull { it.toHcBloodPressure() }
+
+    override suspend fun pullBloodPressureChanges(token: String): BloodPressureChanges {
+        var currentToken = token
+        val upserts = mutableListOf<HcBloodPressure>()
+        val deleted = mutableSetOf<String>()
+        repeat(MAX_CHANGE_PAGES) {
+            val response = client.getChanges(currentToken)
+            if (response.changesTokenExpired) {
+                return BloodPressureChanges(upserts, deleted, currentToken, tokenExpired = true)
+            }
+            response.changes.forEach { change ->
+                when (change) {
+                    is UpsertionChange ->
+                        (change.record as? BloodPressureRecord)?.toHcBloodPressure()?.let { upserts += it }
+                    is DeletionChange -> deleted += change.recordId
+                }
+            }
+            currentToken = response.nextChangesToken
+            if (!response.hasMore) {
+                return BloodPressureChanges(upserts, deleted, currentToken, tokenExpired = false)
+            }
+        }
+        return BloodPressureChanges(upserts, deleted, currentToken, tokenExpired = false)
+    }
+
+    override suspend fun newBloodPressureToken(): String =
+        client.getChangesToken(ChangesTokenRequest(setOf(BloodPressureRecord::class)))
 
     // ------------------------------------------------------------------ //
     //  UI-facing members (later wiring phases)                           //
@@ -195,6 +238,20 @@ private fun Record.toWeighInRawRecord(): WeighInRawRecord? = when (this) {
     is HeightRecord -> raw(RawMeasurementType.HEIGHT, time, height.inMeters)
     else -> null
 }
+
+private fun BloodPressureRecord.toHcBloodPressure(): HcBloodPressure? {
+    // Garmin Connect's own readings would echo straight back into Garmin.
+    if (metadata.dataOrigin.packageName == GARMIN_CONNECT_PACKAGE) return null
+    return HcBloodPressure(
+        id = metadata.id,
+        epochMs = time.toEpochMilli(),
+        zoneOffsetSeconds = (zoneOffset ?: ZoneId.systemDefault().rules.getOffset(time)).totalSeconds,
+        systolic = systolic.inMillimetersOfMercury.roundToInt(),
+        diastolic = diastolic.inMillimetersOfMercury.roundToInt()
+    )
+}
+
+private const val GARMIN_CONNECT_PACKAGE = "com.garmin.android.apps.connectmobile"
 
 private fun Record.raw(
     type: RawMeasurementType,

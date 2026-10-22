@@ -170,6 +170,7 @@ class MainActivity : AppCompatActivity() {
         syncNowButton = findViewById(R.id.syncNowButton)
 
         syncNowButton.setOnClickListener { viewModel.syncNow() }
+        findViewById<TextView>(R.id.bloodPressureNote).setOnClickListener { requestHcPermissions() }
 
         // Debug-only live-spike trigger for the Garmin DI OAuth2 auth client
         // (task garmin-api-import-j5e.1): hidden long-press on

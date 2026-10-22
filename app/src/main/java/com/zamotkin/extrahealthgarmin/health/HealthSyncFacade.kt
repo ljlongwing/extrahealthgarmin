@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.HealthConnectFeatures
+import com.zamotkin.extrahealthgarmin.data.GarminBloodPressureRepository
 import com.zamotkin.extrahealthgarmin.data.GarminRepository
 import com.zamotkin.extrahealthgarmin.data.GarminUploadOrchestrator
 import java.io.File
@@ -36,6 +37,9 @@ interface HealthSyncFacade {
 
     /** Runs one [SyncEngine] pass with the Garmin repository as the gateway. */
     suspend fun sync(): SyncResult
+
+    /** Runs one [BloodPressureSync] pass (no-op until blood pressure access is granted). */
+    suspend fun syncBloodPressure(): BloodPressureResult = BloodPressureResult.NOT_ENABLED
 
     /** Persisted "when sync state last advanced" ([SyncState.lastSyncInstantEpochMs]). */
     fun lastSyncEpochMs(): Long?
@@ -87,6 +91,18 @@ class RealHealthSyncFacade(
         ).sync()
     }
 
+    override suspend fun syncBloodPressure(): BloodPressureResult {
+        val source = HealthConnectSource.create(context) ?: return BloodPressureResult.NOT_ENABLED
+        return BloodPressureSync(
+            source = source,
+            store = FileBloodPressureStateStore(
+                File(context.filesDir, HealthSyncWiring.BLOOD_PRESSURE_STATE_FILE_NAME)
+            ),
+            gateway = GarminBloodPressureRepository(context),
+            clock = Instant::now
+        ).sync()
+    }
+
     override fun lastSyncEpochMs(): Long? =
         stateStore.load().lastSyncInstantEpochMs
 
@@ -124,6 +140,9 @@ object HealthSyncWiring {
 
     /** Cross-process guard next to the state file (task 5 lock). */
     const val LOCK_FILE_NAME = "hc-sync-state.lock"
+
+    /** Blood pressure sync state (own changes token + readings waiting for a pulse). */
+    const val BLOOD_PRESSURE_STATE_FILE_NAME = "blood-pressure-sync.json"
 
     fun facade(context: Context, uploader: GarminUploadOrchestrator? = null): HealthSyncFacade =
         RealHealthSyncFacade(
