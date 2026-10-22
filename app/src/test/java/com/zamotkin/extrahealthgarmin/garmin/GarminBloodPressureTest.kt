@@ -12,8 +12,9 @@ import org.junit.Test
 /** Garmin blood pressure parsing (live response shapes) and the FIT encoding. */
 class GarminBloodPressureTest {
 
-    // 2026-10-21 21:31:00 local, written as if UTC (Garmin reads it as local).
-    private val local2131 = 1792618260L
+    // 2026-10-21 21:31:00 at -06:00 = 2026-10-22 03:31:00Z.
+    private val utc0331 = 1792639860L
+    private val mdt = -6 * 3600
 
     @Test
     fun `nearest heart rate picks the closest sample inside the window`() {
@@ -32,14 +33,14 @@ class GarminBloodPressureTest {
     fun `existing keys match the key of the same reading`() {
         val body = """{"measurementSummaries":[{"measurements":[{"systolic":120,"diastolic":80,
             "measurementTimestampLocal":"2026-10-21T21:31:00.0"}]}]}"""
-        val reading = GarminBloodPressureReading(local2131 + 25, 120, 80, 70)
+        val reading = GarminBloodPressureReading(utc0331 + 25, mdt, 120, 80, 70)
         assertEquals(setOf(reading.key()), GarminBloodPressureParsing.existingKeys(body))
         assertEquals(emptySet<String>(), GarminBloodPressureParsing.existingKeys("""{"measurementSummaries":[]}"""))
     }
 
     @Test
     fun `fit file is a blood pressure file with timestamp, pressures and pulse`() {
-        val bytes = FitBloodPressureFileBuilder.build(listOf(GarminBloodPressureReading(local2131, 120, 80, 70)))
+        val bytes = FitBloodPressureFileBuilder.build(listOf(GarminBloodPressureReading(utc0331, mdt, 120, 80, 70)))
         val fileIds = mutableListOf<FileIdMesg>()
         val readings = mutableListOf<BloodPressureMesg>()
         Decoder(bytes).apply {
@@ -53,7 +54,7 @@ class GarminBloodPressureTest {
         }
         assertEquals(com.garmin.fit.File.BLOOD_PRESSURE, fileIds.single().type)
         val bp = readings.single()
-        assertEquals(local2131, bp.timestamp.date.time / 1000)
+        assertEquals(utc0331, bp.timestamp.date.time / 1000)
         assertEquals(120, bp.systolicPressure)
         assertEquals(80, bp.diastolicPressure)
         assertEquals(70.toShort(), bp.heartRate)

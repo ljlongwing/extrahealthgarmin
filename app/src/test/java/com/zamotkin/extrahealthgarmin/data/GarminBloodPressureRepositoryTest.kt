@@ -64,7 +64,7 @@ class GarminBloodPressureRepositoryTest {
     fun `uploads with the watch heart rate at that minute on the local date`() = runTest {
         val outcome = repository.upload(listOf(reading))
         assertEquals(BloodPressureUploadOutcome.Done(setOf("a"), 1), outcome)
-        assertEquals(listOf(GarminBloodPressureReading(1_792_618_260, 120, 80, 96)), remote.uploaded)
+        assertEquals(listOf(GarminBloodPressureReading(1_792_639_860, -6 * 3600, 120, 80, 96)), remote.uploaded)
         assertEquals(
             listOf(
                 "/bloodpressure-service/bloodpressure/range/2026-10-21/2026-10-21?includeAll=true",

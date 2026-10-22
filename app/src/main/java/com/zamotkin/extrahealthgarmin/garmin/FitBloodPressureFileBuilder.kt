@@ -14,8 +14,7 @@ import java.util.Date
  * `/bloodpressure-service/bloodpressure` POST answers 403 for this client.)
  *
  * One `file_id` plus one `blood_pressure` message per reading: timestamp
- * (local wall clock, see [GarminBloodPressureReading]), systolic_pressure,
- * diastolic_pressure, heart_rate.
+ * (UTC, like weight), systolic_pressure, diastolic_pressure, heart_rate.
  */
 object FitBloodPressureFileBuilder {
 
@@ -23,11 +22,11 @@ object FitBloodPressureFileBuilder {
         val encoder = BufferEncoder()
         encoder.write(FileIdMesg().apply {
             type = File.BLOOD_PRESSURE
-            timeCreated = fitTime(readings.maxOf { it.localEpochSeconds })
+            timeCreated = fitTime(readings.maxOf { it.epochSeconds })
         })
         readings.forEach { reading ->
             encoder.write(BloodPressureMesg().apply {
-                timestamp = fitTime(reading.localEpochSeconds)
+                timestamp = fitTime(reading.epochSeconds)
                 systolicPressure = reading.systolic
                 diastolicPressure = reading.diastolic
                 heartRate = reading.pulse.toShort()

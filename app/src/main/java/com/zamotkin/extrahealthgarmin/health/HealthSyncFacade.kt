@@ -151,7 +151,7 @@ object HealthSyncWiring {
     const val LOCK_FILE_NAME = "hc-sync-state.lock"
 
     /** Blood pressure sync state (own changes token + readings waiting for a pulse). */
-    const val BLOOD_PRESSURE_STATE_FILE_NAME = "bp-sync-state.json"
+    const val BLOOD_PRESSURE_STATE_FILE_NAME = "blood-pressure-sync.json"
 
     fun facade(context: Context, uploader: GarminUploadOrchestrator? = null): HealthSyncFacade =
         RealHealthSyncFacade(

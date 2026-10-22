@@ -6,22 +6,21 @@ import java.time.ZoneOffset
 import kotlin.math.abs
 
 /**
- * One blood pressure reading ready for Garmin Connect.
+ * One blood pressure reading ready for Garmin Connect, at [epochSeconds] (UTC)
+ * taken at UTC offset [zoneOffsetSeconds].
  *
- * [localEpochSeconds] is the reading's LOCAL wall-clock time encoded as if it
- * were UTC: Garmin's blood pressure import reads the FIT timestamp as local
- * time (verified live — a UTC timestamp landed 6 h off), unlike weight.
  * [pulse] is required: Garmin rejects a blood_pressure message without
  * heart_rate ("An unexpected error occurred while processing the file").
  */
 data class GarminBloodPressureReading(
-    val localEpochSeconds: Long,
+    val epochSeconds: Long,
+    val zoneOffsetSeconds: Int,
     val systolic: Int,
     val diastolic: Int,
     val pulse: Int
 ) {
     /** Dedup key against readings Garmin already holds: local minute + values. */
-    fun key(): String = key(localEpochSeconds, systolic, diastolic)
+    fun key(): String = key(epochSeconds + zoneOffsetSeconds, systolic, diastolic)
 
     companion object {
         // python-garminconnect set_blood_pressure ranges (mmHg / bpm).

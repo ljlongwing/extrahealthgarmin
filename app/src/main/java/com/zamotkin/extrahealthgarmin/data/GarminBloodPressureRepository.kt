@@ -76,7 +76,8 @@ class GarminBloodPressureRepository internal constructor(
                     ?.takeIf { it in GarminBloodPressureReading.PULSE_RANGE }
                     ?: return@mapNotNull null
                 reading to GarminBloodPressureReading(
-                    reading.localEpochSeconds, reading.systolic, reading.diastolic, pulse
+                    reading.epochMs / 1000, reading.zoneOffsetSeconds,
+                    reading.systolic, reading.diastolic, pulse
                 )
             }
             if (ready.isNotEmpty()) {
