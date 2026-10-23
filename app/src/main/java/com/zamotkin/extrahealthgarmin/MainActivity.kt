@@ -24,7 +24,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Observer
 import com.zamotkin.extrahealthgarmin.health.SyncWorker
@@ -74,8 +73,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var backfillButton: Button
 
     // Garmin connection entry point (task garmin-api-import-j5e.4).
-    // Created programmatically — constrained into the existing
-    // ConstraintLayout below syncNowButton.
+    // Created programmatically - inserted into the existing
+    // scrollable column below backfillButton.
     private lateinit var connectGarminButton: Button
     private lateinit var garminConnectedText: TextView
 
@@ -210,7 +209,7 @@ class MainActivity : AppCompatActivity() {
      * ViewModel reports a stored token. Anchored below backfillButton.
      */
     private fun addGarminConnectionViews() {
-        val root = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ConstraintLayout
+        val root = (findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ScrollView).getChildAt(0) as LinearLayout
 
         connectGarminButton = Button(
             this, null,
@@ -220,16 +219,13 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.connect_garmin)
             setOnClickListener { showLoginDialog() }
         }
-        val buttonParams = ConstraintLayout.LayoutParams(
+        val buttonParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            topToBottom = backfillButton.id
-            startToStart = ConstraintLayout.LayoutParams.PARENT_ID
-            endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
             topMargin = dp(16)
         }
-        root.addView(connectGarminButton, buttonParams)
+        root.addView(connectGarminButton, root.indexOfChild(backfillButton) + 1, buttonParams)
 
         garminConnectedText = TextView(this).apply {
             id = View.generateViewId()
@@ -238,16 +234,13 @@ class MainActivity : AppCompatActivity() {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             visibility = View.GONE
         }
-        val labelParams = ConstraintLayout.LayoutParams(
+        val labelParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            topToBottom = connectGarminButton.id
-            startToStart = ConstraintLayout.LayoutParams.PARENT_ID
-            endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
             topMargin = dp(8)
         }
-        root.addView(garminConnectedText, labelParams)
+        root.addView(garminConnectedText, root.indexOfChild(connectGarminButton) + 1, labelParams)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
