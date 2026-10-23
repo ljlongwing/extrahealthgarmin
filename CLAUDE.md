@@ -38,7 +38,9 @@ Packages under `app/src/main/java/com/zamotkin/extrahealthgarmin/`:
   (against `SyncState.processedRecordIds`) → upload, mapping onto `SyncResult`
   (Idle/Uploaded/PartialUploaded/Retryable/LoginRequired). `SyncWorker` is the WorkManager ~3-hourly
   periodic pass over the same engine (network-constrained, exponential backoff; only Retryable asks
-  WorkManager to retry). `HealthPermissions` pins the permission set mirrored in the manifest.
+  WorkManager to retry). `SyncAlerts` turns background problems the user must fix (Garmin
+  sign-in gone, Health Connect access revoked, records rejected, a day of failures, Android's
+  unused-app pause, battery optimization) into once-per-episode notifications. `HealthPermissions` pins the permission set mirrored in the manifest.
 - `garmin/` — the Garmin side. `GarminAuthClient` implements DI OAuth2 login with MFA resume
   (garth/python-garminconnect wire contract); tokens live in `GarminTokenStore`, AES-encrypted by
   `TokenCrypto` (Android Keystore, alias `extrahealthgarmin_di_tokens`). `FitWeightFileBuilder`
