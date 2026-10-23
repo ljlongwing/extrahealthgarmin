@@ -17,6 +17,13 @@
     <string name="hc_last_sync">Last sync: %1$s</string>
     <string name="hc_pending_count">Pending upload: %1$d</string>
     <string name="sync_now">Sync now</string>
+    <string name="backfill">Backfill…</string>
+    <string name="backfill_title">Upload weigh-ins from the last…</string>
+    <string-array name="backfill_windows">
+        <item>24 hours</item>
+        <item>7 days</item>
+        <item>30 days</item>
+    </string-array>
     <string name="hc_privacy_policy_title">Data and privacy</string>
     <string name="hc_privacy_policy_body">This app reads your weight, body fat, bone mass, lean body mass, body water, basal metabolic rate and height measurements from Health Connect on this device, combines measurements taken at the same time into one weigh-in, and uploads those weigh-ins to your Garmin Connect account.\n\nThe app only reads data \u2014 it never adds, changes or deletes anything in Health Connect.\n\nNothing is sent anywhere except Garmin Connect. No measurement values are stored by the app \u2014 only record identifiers, so the same weigh-in is never uploaded twice.</string>
 

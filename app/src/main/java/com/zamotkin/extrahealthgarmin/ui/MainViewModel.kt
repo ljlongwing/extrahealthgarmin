@@ -22,6 +22,7 @@ import com.zamotkin.extrahealthgarmin.health.HealthPermissions
 import com.zamotkin.extrahealthgarmin.health.HealthSyncFacade
 import com.zamotkin.extrahealthgarmin.health.HealthSyncWiring
 import com.zamotkin.extrahealthgarmin.health.SyncResult
+import java.time.Duration
 
 /**
  * Semantic upload status. MainActivity maps each value to an R.string — the
@@ -300,6 +301,14 @@ class MainViewModel(
     }
 
     /**
+     * Manual backfill over the last [window] (the Backfill dialog). Same UI
+     * state machine as [syncNow]; the engine keeps the regular sync position.
+     */
+    fun backfill(window: Duration) {
+        startSync(userInitiated = true) { hcFacade.backfill(window) }
+    }
+
+    /**
      * onResume hook: refresh the Health Connect status, then kick a sync pass
      * at most once per [RESUME_SYNC_THROTTLE_MS] (via the injectable [clock]).
      * The persisted lastSync also throttles across process restarts and
@@ -319,7 +328,10 @@ class MainViewModel(
         }
     }
 
-    private fun startSync(userInitiated: Boolean) {
+    private fun startSync(
+        userInitiated: Boolean,
+        pass: suspend () -> SyncResult = { hcFacade.sync() }
+    ) {
         val current = _uiState.value ?: return
         if (current.hcSyncRunning) return
         if (current.hcAvailable != true || !current.hcPermissionsGranted) return
@@ -333,7 +345,7 @@ class MainViewModel(
         }
         viewModelScope.launch {
             try {
-                handleSyncResult(hcFacade.sync(), userInitiated)
+                handleSyncResult(pass(), userInitiated)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

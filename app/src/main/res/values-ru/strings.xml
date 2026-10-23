@@ -17,6 +17,13 @@
     <string name="hc_last_sync">Последняя синхронизация: %1$s</string>
     <string name="hc_pending_count">Ожидают загрузки: %1$d</string>
     <string name="sync_now">Синхронизировать</string>
+    <string name="backfill">Загрузить историю…</string>
+    <string name="backfill_title">Загрузить взвешивания за последние…</string>
+    <string-array name="backfill_windows">
+        <item>24 часа</item>
+        <item>7 дней</item>
+        <item>30 дней</item>
+    </string-array>
     <string name="hc_privacy_policy_title">Данные и приватность</string>
     <string name="hc_privacy_policy_body">Приложение считывает из Health Connect на этом устройстве измерения веса, процента жира, массы костей, мышечной массы, воды в организме, базального метаболизма и роста, объединяет одновременные измерения в одно взвешивание и загружает их в ваш аккаунт Garmin Connect.\n\nПриложение только читает данные — оно никогда не добавляет, не изменяет и не удаляет ничего в Health Connect.\n\nДанные никуда не отправляются, кроме Garmin Connect. Значения измерений приложением не хранятся — только идентификаторы записей, чтобы одно и то же взвешивание не загружалось дважды.</string>
 

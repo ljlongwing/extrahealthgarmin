@@ -383,6 +383,70 @@ class SyncEngineTest {
         tmp.deleteRecursively()
     }
 
+    // ------------------------------------------------------------------ //
+    //  Backfill                                                           //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    fun `backfill_reads_window_uploads_unprocessed_keeps_sync_position`() = runTest {
+        val source = FakeSource(
+            readResult = mutableListOf(
+                weight("w0", NOW.minus(Duration.ofMinutes(50))),
+                weight("w1", NOW.minus(Duration.ofMinutes(10)))
+            )
+        )
+        val lastSync = NOW.minus(Duration.ofHours(2)).toEpochMilli()
+        val store = CountingStore(
+            SyncState(
+                changesToken = "token-1",
+                lastSyncInstantEpochMs = lastSync,
+                processedRecordIds = setOf("w0")
+            )
+        )
+        val uploaded = mutableListOf<List<GarminWeighInRecord>>()
+        val engine = engine(source, store) { uploaded += it; UploadOutcome.Success(it.size) }
+
+        val result = engine.backfill(Duration.ofDays(7))
+
+        assertEquals(SyncResult.Uploaded(1), result)
+        assertEquals("reads exactly the requested window",
+            NOW.minus(Duration.ofDays(7)) to NOW, source.readCalls.single())
+        assertEquals("only the unprocessed weigh-in is uploaded",
+            listOf(listOf(expectedRecord("w1"))), uploaded)
+        val saved = store.current
+        assertEquals("changes token untouched", "token-1", saved.changesToken)
+        assertEquals("last sync untouched", lastSync, saved.lastSyncInstantEpochMs)
+        assertEquals(setOf("w0", "w1"), saved.processedRecordIds)
+    }
+
+    @Test
+    fun `backfill_before_first_sync_leaves_token_unset`() = runTest {
+        val source = FakeSource(
+            readResult = mutableListOf(weight("w1", NOW.minus(Duration.ofMinutes(10))))
+        )
+        val store = CountingStore(SyncState())
+        val engine = engine(source, store) { UploadOutcome.Success(it.size) }
+
+        engine.backfill(Duration.ofDays(1))
+
+        assertEquals("the regular first sync must still run its initial read",
+            null, store.current.changesToken)
+        assertEquals(null, store.current.lastSyncInstantEpochMs)
+        assertEquals(setOf("w1"), store.current.processedRecordIds)
+    }
+
+    @Test
+    fun `backfill_retryable_keeps_state_untouched`() = runTest {
+        val source = FakeSource(
+            readResult = mutableListOf(weight("w1", NOW.minus(Duration.ofMinutes(10))))
+        )
+        val store = CountingStore(SyncState(changesToken = "token-1"))
+        val engine = engine(source, store) { UploadOutcome.Retryable("429") }
+
+        assertEquals(SyncResult.Retryable, engine.backfill(Duration.ofDays(30)))
+        assertEquals("nothing persisted on Retryable", 0, store.saveCount)
+    }
+
     private fun engine(
         source: FakeSource,
         store: CountingStore,
