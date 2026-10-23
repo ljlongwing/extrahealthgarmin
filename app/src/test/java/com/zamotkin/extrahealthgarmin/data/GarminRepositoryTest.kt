@@ -19,6 +19,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.time.LocalDate
 
 /**
  * [GarminRepository] login orchestration tests. Robolectric cannot run on
@@ -89,6 +90,12 @@ class GarminRepositoryTest {
             uploadException?.let { throw it }
             return uploadResult
         }
+
+        override suspend fun fetchExistingWeighIns(
+            from: LocalDate,
+            to: LocalDate,
+            tokens: GarminTokens
+        ): ExistingWeighIns = ExistingWeighIns(emptyList(), tokens)
     }
 
     /**
@@ -153,6 +160,12 @@ class GarminRepositoryTest {
             uploadCalls++
             return UploadResult.Success(records.size, TOKENS)
         }
+
+        override suspend fun fetchExistingWeighIns(
+            from: LocalDate,
+            to: LocalDate,
+            tokens: GarminTokens
+        ): ExistingWeighIns = ExistingWeighIns(emptyList(), tokens)
 
         override fun logout() {
             logoutCalls++

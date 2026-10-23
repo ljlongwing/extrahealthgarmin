@@ -5,6 +5,8 @@ import android.util.Log
 import com.zamotkin.extrahealthgarmin.garmin.GarminAuthClient
 import com.zamotkin.extrahealthgarmin.garmin.GarminAuthError
 import com.zamotkin.extrahealthgarmin.garmin.GarminConnectionError
+import com.zamotkin.extrahealthgarmin.garmin.GarminExistingWeighIn
+import com.zamotkin.extrahealthgarmin.garmin.GarminExistingWeighIns
 import com.zamotkin.extrahealthgarmin.garmin.GarminTooManyRequestsError
 import com.zamotkin.extrahealthgarmin.garmin.GarminTokenStore
 import com.zamotkin.extrahealthgarmin.garmin.GarminTokens
@@ -20,6 +22,8 @@ import com.zamotkin.extrahealthgarmin.garmin.UploadResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * Status of a Garmin login attempt, for the UI layer. [Failed.reason] is a
@@ -40,8 +44,9 @@ interface GarminUploadOrchestrator {
     suspend fun login(email: String, password: String, mfaCode: String? = null): LoginStatus
 
     /**
-     * Records-based upload: deduplicates [records] against the journal,
-     * uploads the new ones as one batch and reports an [UploadOutcome]. No
+     * Records-based upload: deduplicates [records] against the journal and
+     * against the weigh-ins Garmin Connect already holds, uploads the rest as
+     * one batch and reports an [UploadOutcome]. No
      * residual file is produced — unconfirmed records simply stay
      * un-journaled and are retried by the next call. Never throws.
      */
@@ -64,6 +69,13 @@ internal interface GarminRemote {
         tokens: GarminTokens
     ): UploadResult
 
+    /** Weigh-ins Garmin Connect already holds for [from]..[to] (local dates, inclusive). */
+    suspend fun fetchExistingWeighIns(
+        from: LocalDate,
+        to: LocalDate,
+        tokens: GarminTokens
+    ): ExistingWeighIns
+
     /**
      * Discards any pending MFA flow on the underlying auth client, exactly
      * like [com.zamotkin.extrahealthgarmin.garmin.GarminAuthClient.logout]. Needed
@@ -71,6 +83,12 @@ internal interface GarminRemote {
      */
     fun logout()
 }
+
+/** [GarminRemote.fetchExistingWeighIns] result plus the (possibly refreshed) tokens it used. */
+internal data class ExistingWeighIns(
+    val weighIns: List<GarminExistingWeighIn>,
+    val tokens: GarminTokens
+)
 
 /** Production [GarminRemote]: the real HTTP clients over one shared auth session. */
 internal class HttpGarminRemote(
@@ -89,12 +107,22 @@ internal class HttpGarminRemote(
         tokens: GarminTokens
     ): UploadResult = uploadClient.uploadWeighIns(records, tokens)
 
+    override suspend fun fetchExistingWeighIns(
+        from: LocalDate,
+        to: LocalDate,
+        tokens: GarminTokens
+    ): ExistingWeighIns {
+        val result = authClient.apiGet(tokens, GarminExistingWeighIns.rangePath(from, to))
+        return ExistingWeighIns(GarminExistingWeighIns.parse(result.body), result.tokens)
+    }
+
     override fun logout() = authClient.logout()
 }
 
 /**
  * Data-layer orchestration behind [GarminUploadOrchestrator]: deduplicates
- * weigh-in records against the local [UploadJournal], drives
+ * weigh-in records against the local [UploadJournal] and against Garmin
+ * Connect's own weigh-in list ([GarminExistingWeighIns]), drives
  * login/MFA-resume/upload through the task-1/2 clients, and reports every
  * failure as a typed outcome.
  *
@@ -105,7 +133,9 @@ internal class HttpGarminRemote(
 class GarminRepository internal constructor(
     private val remote: GarminRemote,
     private val tokenStore: GarminTokenStore,
-    private val journal: UploadJournal
+    private val journal: UploadJournal,
+    /** Zone that maps a weigh-in onto Garmin's local `calendarDate`. */
+    private val zone: () -> ZoneId = { ZoneId.systemDefault() }
 ) : GarminUploadOrchestrator {
 
     constructor(context: Context) : this(
@@ -216,15 +246,34 @@ class GarminRepository internal constructor(
             }
 
             try {
-                when (val result = remote.uploadWeighIns(newRecords, tokens)) {
+                // Server-side dedup BEFORE uploading: weigh-ins that reached
+                // Garmin some other way are journaled, not re-sent. A failed
+                // lookup uploads nothing (mapped below like an upload failure)
+                // - never risk a duplicate.
+                val days = newRecords.map { GarminExistingWeighIns.localDate(it, zone()) }
+                val existing = remote.fetchExistingWeighIns(
+                    days.min().minusDays(1), days.max().plusDays(1), tokens
+                )
+                val (alreadyInGarmin, toUpload) = newRecords.partition {
+                    GarminExistingWeighIns.isAlreadyPresent(it, existing.weighIns, zone())
+                }
+                if (alreadyInGarmin.isNotEmpty()) {
+                    Log.d(TAG, "Upload: ${alreadyInGarmin.size} record(s) already in Garmin Connect - journaled, not re-sent")
+                    journal.markSent(alreadyInGarmin.map { it.journalKey() })
+                }
+                if (toUpload.isEmpty()) {
+                    tokenStore.save(existing.tokens)
+                    return@withContext UploadOutcome.NotNeeded
+                }
+                when (val result = remote.uploadWeighIns(toUpload, existing.tokens)) {
                     is UploadResult.Success -> {
-                        journal.markSent(newRecords.map { it.journalKey() })
+                        journal.markSent(toUpload.map { it.journalKey() })
                         // Persist the (possibly rotated) tokens the upload actually
                         // used — dropping them forces a re-login once the old
                         // refresh token expires (task 5 fix).
                         tokenStore.save(result.tokens)
-                        Log.d(TAG, "Upload: ${newRecords.size} records confirmed by Garmin")
-                        UploadOutcome.Success(newRecords.size)
+                        Log.d(TAG, "Upload: ${toUpload.size} records confirmed by Garmin")
+                        UploadOutcome.Success(toUpload.size)
                     }
                     is UploadResult.Partial -> {
                         // Journal ONLY the provably imported keys; everything
@@ -233,7 +282,7 @@ class GarminRepository internal constructor(
                         tokenStore.save(result.tokens)
                         val succeeded = result.succeededKeys.toHashSet()
                         UploadOutcome.Partial(
-                            uploadedCount = newRecords.count { it.journalKey() in succeeded },
+                            uploadedCount = toUpload.count { it.journalKey() in succeeded },
                             failureMessages = result.failureMessages
                         )
                     }
