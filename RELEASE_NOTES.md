@@ -1,5 +1,28 @@
 # Extra Health Garmin — Release Notes
 
+## Version 2.1.1 — Main Screen Fix
+
+### Overview
+
+One focused fix: on the main screen, the optional blood-pressure and hydration notes
+could draw on top of each other once the content grew beyond the screen height — most
+visible with Russian text, large system fonts, or when the Garmin connection controls
+appeared.
+
+### What changed
+
+Fixes:
+
+- **No more overlapping elements on the main screen**: the screen is now a scrollable
+  column, so content of any height (long locales, accessibility font scaling, small
+  screens) stacks cleanly and never overlaps
+- The "Connect Garmin" button keeps its position right below the Backfill button, with
+  both notes below it
+
+### Upgrade notes
+
+- Installs directly over 2.1.0; no permissions, settings or data change
+
 ## Version 2.1.0 — Smarter Sync, Blood Pressure and Hydration
 
 ### Overview
