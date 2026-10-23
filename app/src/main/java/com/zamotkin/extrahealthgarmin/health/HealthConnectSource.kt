@@ -13,6 +13,7 @@ import androidx.health.connect.client.records.BoneMassRecord
 import androidx.health.connect.client.records.BodyFatRecord
 import androidx.health.connect.client.records.BodyWaterMassRecord
 import androidx.health.connect.client.records.HeightRecord
+import androidx.health.connect.client.records.HydrationRecord
 import androidx.health.connect.client.records.LeanBodyMassRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.request.ChangesTokenRequest
@@ -71,7 +72,7 @@ data class ChangesPage(
  */
 class HealthConnectSource private constructor(
     private val client: HealthConnectClient
-) : HealthDataSource, BloodPressureSource {
+) : HealthDataSource, BloodPressureSource, HydrationSource {
 
     override suspend fun readRecords(since: Instant, to: Instant): List<WeighInRawRecord> {
         val filter = TimeRangeFilter.between(since, to)
@@ -161,6 +162,45 @@ class HealthConnectSource private constructor(
         client.getChangesToken(ChangesTokenRequest(setOf(BloodPressureRecord::class)))
 
     // ------------------------------------------------------------------ //
+    //  Hydration (optional permission, own changes token)                //
+    // ------------------------------------------------------------------ //
+
+    override suspend fun canReadHydration(): Boolean =
+        HealthPermissions.READ_HYDRATION in grantedPermissions()
+
+    override suspend fun readHydration(since: Instant, to: Instant): List<HcHydration> =
+        client.readRecords(
+            ReadRecordsRequest(HydrationRecord::class, TimeRangeFilter.between(since, to))
+        ).records.mapNotNull { it.toHcHydration() }
+
+    override suspend fun pullHydrationChanges(token: String): HydrationChanges {
+        var currentToken = token
+        val upserts = mutableListOf<HcHydration>()
+        val deleted = mutableSetOf<String>()
+        repeat(MAX_CHANGE_PAGES) {
+            val response = client.getChanges(currentToken)
+            if (response.changesTokenExpired) {
+                return HydrationChanges(upserts, deleted, currentToken, tokenExpired = true)
+            }
+            response.changes.forEach { change ->
+                when (change) {
+                    is UpsertionChange ->
+                        (change.record as? HydrationRecord)?.toHcHydration()?.let { upserts += it }
+                    is DeletionChange -> deleted += change.recordId
+                }
+            }
+            currentToken = response.nextChangesToken
+            if (!response.hasMore) {
+                return HydrationChanges(upserts, deleted, currentToken, tokenExpired = false)
+            }
+        }
+        return HydrationChanges(upserts, deleted, currentToken, tokenExpired = false)
+    }
+
+    override suspend fun newHydrationToken(): String =
+        client.getChangesToken(ChangesTokenRequest(setOf(HydrationRecord::class)))
+
+    // ------------------------------------------------------------------ //
     //  UI-facing members (later wiring phases)                           //
     // ------------------------------------------------------------------ //
 
@@ -248,6 +288,17 @@ private fun BloodPressureRecord.toHcBloodPressure(): HcBloodPressure? {
         zoneOffsetSeconds = (zoneOffset ?: ZoneId.systemDefault().rules.getOffset(time)).totalSeconds,
         systolic = systolic.inMillimetersOfMercury.roundToInt(),
         diastolic = diastolic.inMillimetersOfMercury.roundToInt()
+    )
+}
+
+private fun HydrationRecord.toHcHydration(): HcHydration? {
+    // Garmin Connect's own entries would echo straight back into Garmin.
+    if (metadata.dataOrigin.packageName == GARMIN_CONNECT_PACKAGE) return null
+    return HcHydration(
+        id = metadata.id,
+        epochMs = startTime.toEpochMilli(),
+        zoneOffsetSeconds = (startZoneOffset ?: ZoneId.systemDefault().rules.getOffset(startTime)).totalSeconds,
+        volumeMl = volume.inMilliliters
     )
 }
 
