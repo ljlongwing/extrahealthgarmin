@@ -52,6 +52,9 @@ object HealthPermissions {
     const val READ_HEALTH_DATA_IN_BACKGROUND =
         "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
 
+    /** Optional: enables blood pressure sync, never gates the weigh-in sync. */
+    const val READ_BLOOD_PRESSURE = "android.permission.health.READ_BLOOD_PRESSURE"
+
     /** The reads a sync pass needs while the app is in the foreground. */
     val FOREGROUND_READ_PERMISSIONS: Set<String> = setOf(
         READ_WEIGHT,
@@ -85,7 +88,8 @@ object HealthPermissions {
      * provider apk that row could never be granted.
      */
     fun permissionsToRequest(backgroundReadAvailable: Boolean): Set<String> =
-        if (backgroundReadAvailable) REQUIRED_PERMISSIONS else FOREGROUND_READ_PERMISSIONS
+        (if (backgroundReadAvailable) REQUIRED_PERMISSIONS else FOREGROUND_READ_PERMISSIONS) +
+            READ_BLOOD_PRESSURE
 
     /** Whether [granted] covers every foreground read (the sync gate). */
     fun hasForegroundPermissions(granted: Set<String>): Boolean =

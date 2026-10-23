@@ -81,14 +81,53 @@ class GarminUploadClient(
             return@withContext UploadResult.Success(0, tokens)
         }
         GarminWeighInRecord.validateRanges(records)
+        val (call, current) = postFit(FitWeightFileBuilder.build(records), FIT_FILENAME, tokens)
+        if (call.code == GarminHttp.HTTP_NO_CONTENT) {
+            UploadResult.Success(records.size, current)
+        } else {
+            parseUploadOutcome(call, records, current)
+        }
+    }
+
+    /**
+     * Uploads [readings] as one blood pressure FIT file. Returns the (possibly
+     * refreshed) tokens the caller must persist; any Garmin-side failure —
+     * including per-record `failures` — throws [GarminConnectionError] (or the
+     * typed auth / rate-limit errors), so the caller can keep the readings
+     * for a retry.
+     */
+    suspend fun uploadBloodPressure(
+        readings: List<GarminBloodPressureReading>,
+        tokens: GarminTokens
+    ): GarminTokens = withContext(Dispatchers.IO) {
+        val (call, current) = postFit(
+            FitBloodPressureFileBuilder.build(readings), BLOOD_PRESSURE_FILENAME, tokens
+        )
+        if (call.code == GarminHttp.HTTP_NO_CONTENT) return@withContext current
+        val result = GarminHttp.parseJsonBody("Upload", call).optJSONObject(DETAILED_IMPORT_RESULT_KEY)
+        val failures = result?.optJSONArray(FAILURES_KEY)
+        if (call.code !in 200..299 || (failures != null && failures.length() > 0)) {
+            throw GarminConnectionError("Blood pressure upload failed: HTTP ${call.code} ${failures ?: ""}")
+        }
+        current
+    }
+
+    /**
+     * POSTs one FIT file with the retry discipline described on the class and
+     * returns the final (204 or non-retryable) response plus the tokens used.
+     */
+    private suspend fun postFit(
+        fitBytes: ByteArray,
+        fileName: String,
+        tokens: GarminTokens
+    ): Pair<GarminHttp.HttpCallResult, GarminTokens> {
         var current = authClient.refreshIfNeeded(tokens)
-        val fitBytes = FitWeightFileBuilder.build(records)
         var refreshedAfter401 = false
         var attempt = 0
         while (true) {
             attempt++
             val call = try {
-                GarminHttp.execute(httpClient, uploadRequest(current, fitBytes))
+                GarminHttp.execute(httpClient, uploadRequest(current, fitBytes, fileName))
             } catch (e: GarminConnectionError) {
                 if (attempt < MAX_ATTEMPTS) {
                     backoffAndWait(attempt)
@@ -97,8 +136,6 @@ class GarminUploadClient(
                 throw e
             }
             when {
-                call.code == GarminHttp.HTTP_NO_CONTENT ->
-                    return@withContext UploadResult.Success(records.size, current)
                 call.code == GarminHttp.HTTP_UNAUTHORIZED && !refreshedAfter401 -> {
                     Log.d(TAG, "Upload: HTTP 401 - refreshing DI token once and retrying")
                     current = authClient.forceRefresh(current)
@@ -113,10 +150,9 @@ class GarminUploadClient(
                 call.code == GarminHttp.HTTP_NOT_FOUND ->
                     throw GarminNotFoundError("Upload endpoint returned HTTP 404")
                 call.code >= 500 && attempt < MAX_ATTEMPTS -> backoffAndWait(attempt)
-                else -> return@withContext parseUploadOutcome(call, records, current)
+                else -> return call to current
             }
         }
-        throw IllegalStateException("upload retry loop must never exit normally")
     }
 
     // ------------------------------------------------------------------ //
@@ -214,12 +250,12 @@ class GarminUploadClient(
     //  Request building                                                   //
     // ------------------------------------------------------------------ //
 
-    private fun uploadRequest(tokens: GarminTokens, fitBytes: ByteArray): Request {
+    private fun uploadRequest(tokens: GarminTokens, fitBytes: ByteArray, fileName: String): Request {
         val multipartBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
                 PART_NAME,
-                FIT_FILENAME,
+                fileName,
                 fitBytes.toRequestBody(FIT_MEDIA_TYPE)
             )
             .build()
@@ -245,6 +281,7 @@ class GarminUploadClient(
         private const val UPLOAD_PATH = "/upload-service/upload"
         private const val PART_NAME = "file"
         private const val FIT_FILENAME = "body_composition.fit"
+        private const val BLOOD_PRESSURE_FILENAME = "blood_pressure.fit"
         private val FIT_MEDIA_TYPE = "application/octet-stream".toMediaType()
 
         private const val DETAILED_IMPORT_RESULT_KEY = "detailedImportResult"
